@@ -1,1 +1,110 @@
 @import "tailwindcss";
+
+/*
+  DB-BUTURE design tokens: "Database X-Ray Laboratory".
+  Graphite surfaces, near-black canvas, off-white ink, one technical cyan,
+  and three status colours that always mean the same thing.
+*/
+@theme {
+  --color-ink-0: #07090c;
+  --color-ink-1: #0b0e12;
+  --color-ink-2: #11151b;
+  --color-ink-3: #171c24;
+  --color-ink-4: #1e2530;
+
+  --color-line: #1f2733;
+  --color-line-strong: #2d3846;
+
+  --color-fg: #e7ebef;
+  --color-fg-muted: #94a1af;
+  --color-fg-dim: #5f6b78;
+
+  --color-cyan: #2dd4e6;
+  --color-cyan-dim: #0f6f7c;
+  --color-cyan-wash: #0c2a30;
+  --color-amber: #f2b13c;
+  --color-amber-wash: #2d2410;
+  --color-red: #f0555a;
+  --color-red-wash: #2e1416;
+  --color-green: #3ddc97;
+  --color-green-wash: #0f2a1f;
+
+  --font-sans: "Inter", "Geist", ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font-mono:
+    "JetBrains Mono", "Geist Mono", ui-monospace, "SF Mono", "Cascadia Code", Menlo, monospace;
+
+  --radius-sm: 2px;
+  --radius-md: 4px;
+}
+
+:root {
+  color-scheme: dark;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+}
+
+body {
+  margin: 0;
+  background: var(--color-ink-0);
+  color: var(--color-fg);
+  font-family: var(--font-sans);
+  font-size: 13px;
+  line-height: 1.45;
+  -webkit-font-smoothing: antialiased;
+  overflow: hidden;
+}
+
+/* Blueprint grid: barely there, only on canvases. */
+.bp-grid {
+  background-image:
+    linear-gradient(to right, rgb(45 212 230 / 0.035) 1px, transparent 1px),
+    linear-gradient(to bottom, rgb(45 212 230 / 0.035) 1px, transparent 1px);
+  background-size: 24px 24px;
+}
+
+::selection {
+  background: rgb(45 212 230 / 0.28);
+}
+
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--color-line-strong) transparent;
+}
+
+:focus-visible {
+  outline: 1px solid var(--color-cyan);
+  outline-offset: 1px;
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .fade-in {
+    animation: fade-in 140ms ease-out;
+  }
+  @keyframes fade-in {
+    from {
+      opacity: 0;
+      transform: translateY(2px);
+    }
+    to {
+      opacity: 1;
+      transform: none;
+    }
+  }
+}
+
+/* React Flow tweaks to match the blueprint look */
+.react-flow {
+  --xy-background-color: transparent;
+  --xy-edge-stroke-default: var(--color-line-strong);
+  --xy-minimap-background-color-default: var(--color-ink-1);
+  --xy-controls-button-background-color-default: var(--color-ink-2);
+  --xy-controls-button-color-default: var(--color-fg-muted);
+  --xy-controls-button-border-color-default: var(--color-line);
+}
+.react-flow__attribution {
+  display: none;
+}
