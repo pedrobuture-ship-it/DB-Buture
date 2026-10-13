@@ -221,7 +221,7 @@ function ErdCanvas() {
             : null,
         },
       })),
-    [nodes, related, selectedId, heat, pathNodes],
+    [nodes, related, selectedId, focusId, heat, pathNodes],
   );
 
   // Huge schemas: drawing thousands of edges is the main render cost, so by default only the
