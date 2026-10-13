@@ -5,6 +5,8 @@ import { ObjectList } from "@/features/explorer/Lists";
 import { HealthView } from "@/features/health/HealthView";
 import { IndexAnalysis } from "@/features/health/IndexAnalysis";
 import { ImpactView } from "@/features/impact/ImpactView";
+import { QueryPlans } from "@/features/sql/QueryPlans";
+import { SqlEditorView } from "@/features/sql/SqlEditorView";
 import { Overview } from "@/features/overview/Overview";
 import { Placeholder } from "@/features/shell/Placeholder";
 import { useUi } from "@/stores/ui";
@@ -32,6 +34,10 @@ export function ViewRouter() {
       return <HealthView />;
     case "index-analysis":
       return <IndexAnalysis />;
+    case "sql":
+      return <SqlEditorView />;
+    case "plans":
+      return <QueryPlans />;
     default:
       return <Placeholder view={view} />;
   }

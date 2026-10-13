@@ -5,9 +5,18 @@ import type {
   AuditReport,
   ConnectionConfig,
   ConnectionProbe,
+  DiffReport,
   GraphView,
   ImpactReport,
+  ImportResult,
   IndexReport,
+  LineageReport,
+  MigrationReport,
+  QueryPlan,
+  QueryResult,
+  SnapshotRow,
+  TableCentrality,
+  DatabaseSchema,
   SavedConnection,
   SchemaPayload,
   StableId,
@@ -42,6 +51,8 @@ export interface SavedLayout {
   positions: Record<string, { x: number; y: number }>;
   manual: boolean;
 }
+
+export type SqlDialect = "postgres" | "mysql" | "sqlite" | "generic";
 
 export interface ConnectInput {
   savedId?: string;
@@ -80,4 +91,29 @@ export const ipc = {
   analyzeImpact: (objectId: StableId) => call<ImpactReport>("analyze_impact", { objectId }),
   runAudit: () => call<AuditReport>("run_audit"),
   indexAnalysis: () => call<IndexReport>("index_analysis"),
+  importSql: (sql: string, dialect: SqlDialect) =>
+    call<ImportResult>("import_sql", { sql, dialect }),
+  openImport: (sql: string, dialect: SqlDialect, name?: string) =>
+    call<ActiveInfo>("open_import", { sql, dialect, name }),
+  runQuery: (id: string, sql: string, limit?: number, timeoutMs?: number) =>
+    call<QueryResult>("run_query", { id, sql, limit, timeoutMs }),
+  cancelQuery: (id: string) => call<boolean>("cancel_query", { id }),
+  explainQuery: (sql: string) => call<QueryPlan>("explain_query", { sql }),
+  createSnapshot: (name?: string) => call<SnapshotRow>("create_snapshot", { name }),
+  listSnapshots: () => call<SnapshotRow[]>("list_snapshots"),
+  renameSnapshot: (id: string, name: string) => call<null>("rename_snapshot", { id, name }),
+  deleteSnapshot: (id: string) => call<null>("delete_snapshot", { id }),
+  getSnapshot: (id: string) =>
+    call<{ snapshot: SnapshotRow; schema: DatabaseSchema }>("get_snapshot", { id }),
+  exportSnapshot: (id: string) => call<string>("export_snapshot", { id }),
+  diffVersions: (before: string, after: string) =>
+    call<DiffReport>("diff_versions", { before, after }),
+  compareEnvironment: (savedId: string, password?: string) =>
+    call<DiffReport>("compare_environment", { input: { savedId, password } }),
+  simulateMigration: (ddl: string) => call<MigrationReport>("simulate_migration", { ddl }),
+  tableCentrality: () => call<TableCentrality[]>("table_centrality"),
+  viewLineage: (viewId: StableId) => call<LineageReport>("view_lineage", { viewId }),
+  exportSchema: (format: "json" | "markdown") => call<string>("export_schema", { format }),
+  saveExport: (path: string, content: string, base64 = false) =>
+    call<null>("save_export", { path, content, base64 }),
 };

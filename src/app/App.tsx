@@ -1,12 +1,14 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { EmptyState, ErrorNote } from "@/components/ui";
 import { CommandPalette } from "@/features/palette/CommandPalette";
+import { ImportScreen } from "@/features/importsql/ImportScreen";
 import { ConnectScreen } from "@/features/connect/ConnectScreen";
 import { Header } from "@/features/shell/Header";
 import { Sidebar } from "@/features/shell/Sidebar";
 import { StatusBar } from "@/features/shell/StatusBar";
 import { ViewRouter } from "@/app/ViewRouter";
 import { useStatus } from "@/hooks/queries";
+import { useUi } from "@/stores/ui";
 import type { AppError } from "@/types/schema";
 
 const queryClient = new QueryClient({
@@ -15,6 +17,7 @@ const queryClient = new QueryClient({
 
 function Root() {
   const status = useStatus();
+  const importOpen = useUi((s) => s.importOpen);
   if (status.isLoading) return <EmptyState title="Starting DB-BUTURE…" />;
   if (status.error && !status.data) {
     return (
@@ -23,7 +26,7 @@ function Root() {
       </div>
     );
   }
-  if (!status.data) return <ConnectScreen />;
+  if (!status.data) return importOpen ? <ImportScreen /> : <ConnectScreen />;
   return (
     <div className="flex h-full">
       <Sidebar />

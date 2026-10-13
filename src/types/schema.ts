@@ -187,6 +187,8 @@ export interface ActiveInfo {
   database: string;
   serverVersion: string;
   readOnly: boolean;
+  /** Workspace opened from imported SQL: no live database behind it. */
+  imported: boolean;
 }
 
 export interface ConnectionProbe {
@@ -322,4 +324,147 @@ export interface IndexReport {
 export interface AppError {
   kind: string;
   message: string;
+}
+
+// ---- SQL import, query execution, plans, versioning ----
+
+export interface ImportWarning {
+  statementNo: number;
+  statement: string;
+  reason: string;
+}
+
+export interface ImportResult {
+  schema: DatabaseSchema;
+  status: "parsed" | "parsed_with_warnings";
+  statements: number;
+  understood: number;
+  warnings: ImportWarning[];
+  warningsTruncated: boolean;
+}
+
+export interface ResultColumn {
+  name: string;
+  typeName: string;
+}
+
+export interface QueryResult {
+  columns: ResultColumn[];
+  rows: unknown[][];
+  rowCount: number;
+  truncated: boolean;
+  limit: number;
+  elapsedMs: number;
+}
+
+export interface PlanNode {
+  id: number;
+  nodeType: string;
+  relation: string | null;
+  index: string | null;
+  filter: string | null;
+  estimatedCost: number | null;
+  startupCost: number | null;
+  estimatedRows: number | null;
+  details: [string, string][];
+  children: PlanNode[];
+}
+
+export interface QueryPlan {
+  engine: Engine;
+  root: PlanNode;
+  totalCost: number | null;
+  observations: { nodeId: number; severity: Severity; evidence: Evidence; message: string }[];
+  notes: string[];
+}
+
+export interface SnapshotRow {
+  id: string;
+  name: string;
+  connectionId: string | null;
+  sha256: string;
+  createdAt: string;
+  tables: number;
+  views: number;
+  engine: string;
+  database: string;
+}
+
+export type ChangeKind = "added" | "removed" | "changed";
+
+export interface DiffEntry {
+  id: StableId;
+  objectType: string;
+  name: string;
+  parent: StableId | null;
+  change: ChangeKind;
+  fields: { field: string; before: unknown; after: unknown }[];
+}
+
+export interface SchemaDiff {
+  entries: DiffEntry[];
+  summary: { added: number; removed: number; changed: number };
+}
+
+export interface DiffReport {
+  beforeLabel: string;
+  afterLabel: string;
+  beforeSha: string;
+  afterSha: string;
+  identical: boolean;
+  diff: SchemaDiff;
+}
+
+export interface MigrationReport {
+  statements: {
+    statementNo: number;
+    sql: string;
+    status: "applied" | "ignored" | "failed";
+    message: string;
+  }[];
+  diff: SchemaDiff;
+  risks: {
+    kind: "structural" | "runtime" | "application";
+    severity: Severity;
+    evidence: Evidence;
+    message: string;
+    object: StableId | null;
+  }[];
+  simulated: DatabaseSchema;
+  notes: string[];
+}
+
+export type ColumnClass = "DIRECT" | "DERIVED" | "AGGREGATED" | "UNKNOWN";
+
+export interface LineageReport {
+  tables: {
+    view: StableId;
+    viewName: string;
+    sources: { id: StableId; name: string; origin: "catalog" | "parser" | "both" }[];
+    confidence: "complete" | "partial";
+    notes: string[];
+  };
+  columns: {
+    view: StableId;
+    viewName: string;
+    confidence: "complete" | "partial";
+    notes: string[];
+    columns: {
+      column: string;
+      class: ColumnClass;
+      sources: { table: StableId; tableName: string; column: string }[];
+      expression: string | null;
+      note: string | null;
+    }[];
+  };
+}
+
+export interface TableCentrality {
+  table: StableId;
+  name: string;
+  referencedBy: number;
+  references: number;
+  pathShare: number;
+  role: "hub" | "bridge" | "regular" | "isolated";
+  explanation: string;
 }

@@ -3,6 +3,7 @@ import { open } from "@tauri-apps/plugin-dialog";
 import { Database, FileDigit, Trash2 } from "lucide-react";
 import { Badge, Button, ErrorNote, Label, Mono, Panel, cx } from "@/components/ui";
 import { useConnect, useSavedConnections } from "@/hooks/queries";
+import { useUi } from "@/stores/ui";
 import { ipc, toAppError } from "@/lib/ipc";
 import { engineLabel } from "@/lib/format";
 import { useQueryClient } from "@tanstack/react-query";
@@ -96,6 +97,7 @@ export function ConnectScreen() {
   const [saved, setSaved] = useState(false);
   const connect = useConnect();
   const qc = useQueryClient();
+  const setImportOpen = useUi((s) => s.setImportOpen);
   const savedConnections = useSavedConnections();
 
   const set = <K extends keyof FormState>(k: K, v: FormState[K]) =>
@@ -329,6 +331,15 @@ export function ConnectScreen() {
         </div>
 
         <aside className="fade-in">
+          <Panel title="No database?">
+            <div className="p-3">
+              <p className="mb-2 text-[12px] text-fg-muted">
+                Paste or open a .sql file and explore its schema offline.
+              </p>
+              <Button onClick={() => setImportOpen(true)}>Import SQL</Button>
+            </div>
+          </Panel>
+          <div className="h-4" />
           <Panel title="Saved connections">
             {savedConnections.data?.length ? (
               <ul>
