@@ -4,6 +4,7 @@ pub mod audit;
 pub mod diff;
 pub mod impact;
 pub mod indexes;
+pub mod lineage;
 pub mod snapshot;
 
 use serde::{Deserialize, Serialize};

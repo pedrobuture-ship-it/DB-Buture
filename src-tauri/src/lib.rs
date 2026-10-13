@@ -3,6 +3,7 @@ pub mod commands;
 pub mod database;
 pub mod error;
 pub mod graph;
+pub mod importer;
 pub mod metadata;
 pub mod security;
 pub mod state;
