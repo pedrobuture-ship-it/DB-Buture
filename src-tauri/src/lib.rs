@@ -75,7 +75,7 @@ pub fn run() {
             commands::versioning::table_centrality,
             commands::versioning::view_lineage,
             commands::versioning::export_schema,
-            commands::versioning::save_export,
+            commands::versioning::save_export_as,
         ])
         .run(tauri::generate_context!())
         .expect("error while running DB-BUTURE");

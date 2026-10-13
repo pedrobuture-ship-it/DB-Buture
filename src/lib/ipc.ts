@@ -114,6 +114,7 @@ export const ipc = {
   tableCentrality: () => call<TableCentrality[]>("table_centrality"),
   viewLineage: (viewId: StableId) => call<LineageReport>("view_lineage", { viewId }),
   exportSchema: (format: "json" | "markdown") => call<string>("export_schema", { format }),
-  saveExport: (path: string, content: string, base64 = false) =>
-    call<null>("save_export", { path, content, base64 }),
+  /** Opens a native save dialog (in Rust) and writes the content. Resolves to the path, or null if cancelled. */
+  saveExportAs: (suggestedName: string, content: string, base64 = false) =>
+    call<string | null>("save_export_as", { suggestedName, content, base64 }),
 };

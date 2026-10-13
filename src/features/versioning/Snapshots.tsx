@@ -1,5 +1,4 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { save } from "@tauri-apps/plugin-dialog";
 import { Camera, Download, GitCompare, Pencil, Trash2 } from "lucide-react";
 import { useState } from "react";
 import { Badge, Button, EmptyState, ErrorNote, Label, Mono, Panel } from "@/components/ui";
@@ -43,11 +42,10 @@ export function Snapshots() {
 
   const exportSnap = (s: SnapshotRow) =>
     run(async () => {
-      const path = await save({
-        defaultPath: `${s.name.replace(/[^\w.-]+/g, "_")}.json`,
-        filters: [{ name: "JSON", extensions: ["json"] }],
-      });
-      if (path) await ipc.saveExport(path, await ipc.exportSnapshot(s.id));
+      await ipc.saveExportAs(
+        `${s.name.replace(/[^\w.-]+/g, "_")}.json`,
+        await ipc.exportSnapshot(s.id),
+      );
     });
 
   return (

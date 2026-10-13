@@ -257,31 +257,66 @@ pub async fn export_schema(state: State<'_, AppState>, format: String) -> AppRes
     }
 }
 
-/// Writes an export to a path the user picked in a save dialog. Only known extensions are
-/// accepted and `base64` content (PNG) is decoded before writing.
-#[tauri::command]
-pub async fn save_export(path: String, content: String, base64: Option<bool>) -> AppResult<()> {
-    use std::io::Write;
-    let p = std::path::Path::new(&path);
-    let ext = p
+const EXPORT_EXTENSIONS: [&str; 5] = ["json", "md", "svg", "png", "sql"];
+
+fn export_extension(name: &str) -> AppResult<String> {
+    let ext = std::path::Path::new(name)
         .extension()
         .and_then(|e| e.to_str())
         .map(str::to_lowercase)
         .unwrap_or_default();
-    if !["json", "md", "svg", "png", "sql"].contains(&ext.as_str()) {
-        return Err(AppError::Validation(format!(
+    if EXPORT_EXTENSIONS.contains(&ext.as_str()) {
+        Ok(ext)
+    } else {
+        Err(AppError::Validation(format!(
             "exports may only be saved as json, md, svg, png or sql (got .{ext})"
-        )));
+        )))
     }
-    let bytes = if base64.unwrap_or(false) {
+}
+
+/// Writes export bytes. The destination always comes from a native save dialog opened by Rust,
+/// never from the webview, so the interface cannot write to arbitrary paths.
+fn write_export(path: &std::path::Path, content: String, base64: bool) -> AppResult<()> {
+    use std::io::Write;
+    export_extension(&path.to_string_lossy())?;
+    let bytes = if base64 {
         decode_base64(&content)
             .ok_or_else(|| AppError::Validation("invalid base64 content".into()))?
     } else {
         content.into_bytes()
     };
-    let mut f = std::fs::File::create(p).map_err(|e| AppError::Storage(e.to_string()))?;
+    let mut f = std::fs::File::create(path).map_err(|e| AppError::Storage(e.to_string()))?;
     f.write_all(&bytes)
         .map_err(|e| AppError::Storage(e.to_string()))
+}
+
+/// Opens a native "save as" dialog and writes `content` where the user chooses.
+/// Returns the chosen path, or `None` when the dialog was cancelled.
+#[tauri::command]
+pub async fn save_export_as(
+    app: tauri::AppHandle,
+    suggested_name: String,
+    content: String,
+    base64: Option<bool>,
+) -> AppResult<Option<String>> {
+    use tauri_plugin_dialog::DialogExt;
+    let ext = export_extension(&suggested_name)?;
+    let name = suggested_name.clone();
+    let chosen = tauri::async_runtime::spawn_blocking(move || {
+        app.dialog()
+            .file()
+            .set_file_name(name)
+            .add_filter(ext.to_uppercase(), &[ext.as_str()])
+            .blocking_save_file()
+    })
+    .await
+    .map_err(|e| AppError::Internal(e.to_string()))?;
+    let Some(path) = chosen else { return Ok(None) };
+    let path = path
+        .into_path()
+        .map_err(|e| AppError::Validation(e.to_string()))?;
+    write_export(&path, content, base64.unwrap_or(false))?;
+    Ok(Some(path.display().to_string()))
 }
 
 fn decode_base64(s: &str) -> Option<Vec<u8>> {
@@ -320,13 +355,23 @@ mod tests {
         assert!(decode_base64("a$b").is_none());
     }
 
-    #[tokio::test]
-    async fn save_export_rejects_unknown_extensions() {
-        assert!(save_export("/tmp/x.sh".into(), "echo".into(), None)
-            .await
-            .is_err());
-        assert!(save_export("/tmp/noext".into(), "x".into(), None)
-            .await
-            .is_err());
+    #[test]
+    fn exports_are_limited_to_known_extensions() {
+        assert_eq!(export_extension("schema.JSON").unwrap(), "json");
+        assert!(export_extension("run.sh").is_err());
+        assert!(export_extension("noext").is_err());
+        let dir = std::env::temp_dir();
+        assert!(write_export(&dir.join("x.sh"), "echo".into(), false).is_err());
+    }
+
+    #[test]
+    fn write_export_writes_text_and_decoded_base64() {
+        let dir = std::env::temp_dir().join(format!("db-buture-exp-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        write_export(&dir.join("a.md"), "# hi".into(), false).unwrap();
+        assert_eq!(std::fs::read_to_string(dir.join("a.md")).unwrap(), "# hi");
+        write_export(&dir.join("b.png"), "aGVsbG8=".into(), true).unwrap();
+        assert_eq!(std::fs::read(dir.join("b.png")).unwrap(), b"hello");
+        assert!(write_export(&dir.join("c.png"), "%%%".into(), true).is_err());
     }
 }

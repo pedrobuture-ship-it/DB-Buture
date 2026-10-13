@@ -1,4 +1,3 @@
-import { save } from "@tauri-apps/plugin-dialog";
 import { useState } from "react";
 import { Badge, Button, ErrorNote, Label, Mono, Panel } from "@/components/ui";
 import { useStatus } from "@/hooks/queries";
@@ -18,13 +17,8 @@ export function Settings() {
     setMsg(null);
     try {
       const ext = format === "json" ? "json" : "md";
-      const path = await save({
-        defaultPath: `schema.${ext}`,
-        filters: [{ name: format.toUpperCase(), extensions: [ext] }],
-      });
-      if (!path) return;
-      await ipc.saveExport(path, await ipc.exportSchema(format));
-      setMsg(`Saved ${path}`);
+      const path = await ipc.saveExportAs(`schema.${ext}`, await ipc.exportSchema(format));
+      if (path) setMsg(`Saved ${path}`);
     } catch (e) {
       setError(toAppError(e));
     }

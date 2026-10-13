@@ -6,6 +6,7 @@ import { useConnect, useSavedConnections } from "@/hooks/queries";
 import { useUi } from "@/stores/ui";
 import { ipc, toAppError } from "@/lib/ipc";
 import { engineLabel } from "@/lib/format";
+import { weakTls } from "@/lib/net";
 import { useQueryClient } from "@tanstack/react-query";
 import { keys } from "@/hooks/queries";
 import type { AppError, ConnectionConfig, ConnectionProbe, Engine, SslMode } from "@/types/schema";
@@ -283,6 +284,15 @@ export function ConnectScreen() {
                     </select>
                   </Field>
                 </>
+              )}
+              {engine !== "sqlite" && weakTls(form.sslMode, form.host) && (
+                <p
+                  role="note"
+                  className="col-span-2 rounded-sm border border-amber/40 bg-amber-wash px-3 py-2 text-[11px] text-amber"
+                >
+                  SSL mode “{form.sslMode}” on a remote host: the connection may be unencrypted. Use
+                  “require” or “verify-full” for anything outside your machine.
+                </p>
               )}
               <div className="col-span-2 mt-1 flex items-center gap-2">
                 <Button onClick={() => void run("test")} disabled={busy !== null}>

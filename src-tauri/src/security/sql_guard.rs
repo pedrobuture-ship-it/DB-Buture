@@ -41,6 +41,21 @@ const DENIED_FUNCTIONS: &[&str] = &[
     "pg_terminate_backend",
     "pg_cancel_backend",
     "pg_reload_conf",
+    // a session setting can switch the read-only guarantee off
+    "set_config",
+    // notifications, WAL and replication control
+    "pg_notify",
+    "pg_switch_wal",
+    "pg_create_restore_point",
+    "pg_logical_emit_message",
+    "pg_create_logical_replication_slot",
+    "pg_create_physical_replication_slot",
+    "pg_drop_replication_slot",
+    "pg_promote",
+    "pg_wal_replay_pause",
+    "pg_wal_replay_resume",
+    "pg_backup_start",
+    "pg_backup_stop",
     "lo_import",
     "lo_export",
     "lo_unlink",
@@ -210,6 +225,26 @@ mod tests {
         blocked("SELECT pg_terminate_backend(123)");
         blocked("SELECT lo_import('/etc/passwd')");
         ok("SELECT nextval_count FROM stats");
+    }
+
+    #[test]
+    fn cannot_turn_off_read_only_through_settings() {
+        blocked("SELECT set_config('default_transaction_read_only', 'off', false)");
+        blocked("SELECT pg_catalog.set_config('transaction_read_only', 'off', false)");
+        blocked("SET default_transaction_read_only = off");
+        blocked("SET SESSION TRANSACTION READ WRITE");
+        blocked("START TRANSACTION READ WRITE");
+        blocked("BEGIN");
+        assert!(check_read_only("PRAGMA query_only = OFF", Engine::Sqlite).is_err());
+        assert!(check_read_only("ATTACH DATABASE 'x.db' AS x", Engine::Sqlite).is_err());
+        ok("SELECT current_setting('default_transaction_read_only')");
+    }
+
+    #[test]
+    fn side_effect_functions_are_blocked_when_schema_qualified_or_cased() {
+        blocked("SELECT PG_NOTIFY('c', 'p')");
+        blocked("SELECT pg_catalog.pg_terminate_backend(1)");
+        blocked("SELECT\n  NEXTVAL ( 's' )");
     }
 
     #[test]

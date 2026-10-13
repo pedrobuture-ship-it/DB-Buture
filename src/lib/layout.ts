@@ -1,4 +1,4 @@
-import ELK, { type ElkNode } from "elkjs/lib/elk.bundled.js";
+import ELKApi, { type ELK, type ElkNode } from "elkjs/lib/elk-api.js";
 import ElkWorker from "elkjs/lib/elk-worker.min.js?worker";
 
 export type LayoutMode = "hierarchical" | "compact" | "horizontal" | "vertical";
@@ -26,13 +26,16 @@ export interface LayoutEdge {
  * Layout runs in a Web Worker in the app so a large schema never freezes the interface.
  * Tests (no Worker) fall back to the bundled, in-thread engine.
  */
-let elkInstance: InstanceType<typeof ELK> | null = null;
-function getElk(): InstanceType<typeof ELK> {
+let elkInstance: ELK | null = null;
+async function getElk(): Promise<ELK> {
   if (!elkInstance) {
-    elkInstance =
-      typeof Worker === "undefined"
-        ? new ELK()
-        : new ELK({ workerFactory: () => new ElkWorker() as unknown as Worker });
+    if (typeof Worker !== "undefined") {
+      elkInstance = new ELKApi({ workerFactory: () => new ElkWorker() as unknown as Worker });
+    } else {
+      // test environments: load the in-thread engine only when it is actually needed
+      const mod = await import("elkjs/lib/elk.bundled.js");
+      elkInstance = new mod.default();
+    }
   }
   return elkInstance;
 }
@@ -96,7 +99,7 @@ export async function autoLayout(
       .filter((e) => ids.has(e.source) && ids.has(e.target) && e.source !== e.target)
       .map((e) => ({ id: e.id, sources: [e.source], targets: [e.target] })),
   };
-  const out = await getElk().layout(graph);
+  const out = await (await getElk()).layout(graph);
   const positions: Record<string, { x: number; y: number }> = {};
   for (const c of out.children ?? []) positions[c.id] = { x: c.x ?? 0, y: c.y ?? 0 };
   return positions;

@@ -101,12 +101,8 @@ async fn dispatch(
         "table_centrality" => ok(versioning::table_centrality(st()).await),
         "view_lineage" => ok(versioning::view_lineage(st(), arg(&a, "viewId")?).await),
         "export_schema" => ok(versioning::export_schema(st(), arg(&a, "format")?).await),
-        "save_export" => {
-            ok(
-                versioning::save_export(arg(&a, "path")?, arg(&a, "content")?, arg(&a, "base64")?)
-                    .await,
-            )
-        }
+        // native dialogs do not exist in the mock runtime: report "cancelled"
+        "save_export_as" => Ok(Value::Null),
         other => Err(AppError::Validation(format!(
             "dev bridge: unknown command `{other}`"
         ))),

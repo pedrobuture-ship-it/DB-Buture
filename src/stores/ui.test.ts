@@ -22,3 +22,11 @@ describe("ui store", () => {
     expect(useUi.getState().selectedId).toBeNull();
   });
 });
+
+describe("ui store workspace switching", () => {
+  it("reset clears the SQL editor so a query never follows you to another database", () => {
+    useUi.getState().setSqlText("select 1");
+    useUi.getState().reset();
+    expect(useUi.getState().sqlText).toBe("");
+  });
+});

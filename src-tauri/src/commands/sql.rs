@@ -30,9 +30,24 @@ impl From<DialectArg> for SqlDialect {
     }
 }
 
+/// Scripts larger than this are refused rather than parsed (bounded memory and time).
+pub const MAX_SCRIPT_BYTES: usize = 8 * 1024 * 1024;
+
+fn check_size(sql: &str) -> AppResult<()> {
+    if sql.len() > MAX_SCRIPT_BYTES {
+        return Err(AppError::Validation(format!(
+            "the script is {} MB; the limit is {} MB",
+            sql.len() / (1024 * 1024),
+            MAX_SCRIPT_BYTES / (1024 * 1024)
+        )));
+    }
+    Ok(())
+}
+
 /// Parses SQL without touching any database or workspace state.
 #[tauri::command]
 pub fn import_sql(sql: String, dialect: DialectArg) -> AppResult<ImportResult> {
+    check_size(&sql)?;
     Ok(importer::import_sql(&sql, dialect.into()))
 }
 
@@ -44,6 +59,7 @@ pub async fn open_import(
     dialect: DialectArg,
     name: Option<String>,
 ) -> AppResult<ActiveInfo> {
+    check_size(&sql)?;
     let result = importer::import_sql(&sql, dialect.into());
     if result.schema.tables.is_empty() && result.schema.views.is_empty() {
         return Err(AppError::Validation(
@@ -113,4 +129,16 @@ pub async fn capabilities(state: State<'_, AppState>) -> AppResult<Capabilities>
     Ok(Capabilities {
         live: state.session().await.is_ok(),
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn oversized_scripts_are_refused() {
+        assert!(check_size("select 1").is_ok());
+        let big = "x".repeat(MAX_SCRIPT_BYTES + 1);
+        assert!(matches!(check_size(&big), Err(AppError::Validation(_))));
+    }
 }

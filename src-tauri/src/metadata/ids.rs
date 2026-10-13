@@ -73,13 +73,25 @@ impl fmt::Display for StableId {
     }
 }
 
+/// Invisible formatting characters (zero-width, bidirectional overrides, BOM, word joiner...)
+/// that could make two different names look identical or reorder how an id is displayed.
+fn is_format_char(c: char) -> bool {
+    matches!(c,
+        '\u{00AD}' | '\u{061C}' | '\u{180E}'
+        | '\u{200B}'..='\u{200F}'
+        | '\u{202A}'..='\u{202E}'
+        | '\u{2060}'..='\u{2064}'
+        | '\u{2066}'..='\u{206F}'
+        | '\u{FEFF}')
+}
+
 /// Percent-escape the characters that carry meaning in an id, plus control characters.
 fn esc(input: &str) -> String {
     let mut out = String::with_capacity(input.len());
     for ch in input.chars() {
         match ch {
             '%' | ':' | '.' | '(' | ')' | ',' => out.push_str(&format!("%{:02X}", ch as u32)),
-            c if c.is_control() || c == '\u{200B}' || c == '\u{FEFF}' => {
+            c if c.is_control() || is_format_char(c) => {
                 out.push_str(&format!("%u{:04X}", c as u32))
             }
             c => out.push(c),
@@ -136,6 +148,19 @@ mod tests {
             .as_str()
             .chars()
             .all(|c| !c.is_control() && c != '\u{200B}'));
+    }
+
+    #[test]
+    fn bidi_overrides_and_zero_width_chars_cannot_spoof_names() {
+        let spoof = StableId::table(Engine::Postgres, "public", "users\u{202E}gnp.exe");
+        assert!(!spoof.as_str().contains('\u{202E}'));
+        let a = StableId::table(Engine::Postgres, "public", "admin");
+        let b = StableId::table(Engine::Postgres, "public", "adm\u{200D}in");
+        assert_ne!(
+            a, b,
+            "a zero width joiner must not collapse into the plain name"
+        );
+        assert!(!b.as_str().chars().any(|c| c == '\u{200D}'));
     }
 
     #[test]

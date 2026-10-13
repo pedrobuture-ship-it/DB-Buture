@@ -12,7 +12,6 @@ import {
   type NodeChange,
 } from "@xyflow/react";
 import "@xyflow/react/dist/style.css";
-import { save } from "@tauri-apps/plugin-dialog";
 import { Crosshair, Download, LayoutGrid, ListTree, Radar, Route, X } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Button, EmptyState, ErrorNote, Label, cx } from "@/components/ui";
@@ -317,13 +316,8 @@ function ErdCanvas() {
     setLayoutError(null);
     try {
       const svg = buildErdSvg(schema, positions.current.positions);
-      const target = await save({
-        defaultPath: `er-diagram.${kind}`,
-        filters: [{ name: kind.toUpperCase(), extensions: [kind] }],
-      });
-      if (!target) return;
-      if (kind === "svg") await ipc.saveExport(target, svg);
-      else await ipc.saveExport(target, await svgToPngBase64(svg), true);
+      if (kind === "svg") await ipc.saveExportAs("er-diagram.svg", svg);
+      else await ipc.saveExportAs("er-diagram.png", await svgToPngBase64(svg), true);
     } catch (e) {
       setLayoutError(toAppError(e));
     }

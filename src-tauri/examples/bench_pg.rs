@@ -10,10 +10,16 @@ use sqlx::postgres::PgPoolOptions;
 #[tokio::main]
 async fn main() {
     let url = std::env::var("DB_BUTURE_BENCH_PG").expect("set DB_BUTURE_BENCH_PG");
-    let pool = PgPoolOptions::new().max_connections(2).connect(&url).await.expect("connect");
+    let pool = PgPoolOptions::new()
+        .max_connections(2)
+        .connect(&url)
+        .await
+        .expect("connect");
     for run in 1..=3 {
         let t = Instant::now();
-        let schema = postgres::introspect(&pool, false).await.expect("introspect");
+        let schema = postgres::introspect(&pool, false)
+            .await
+            .expect("introspect");
         let took = t.elapsed();
         let t = Instant::now();
         let json = serde_json::to_vec(&schema).unwrap();

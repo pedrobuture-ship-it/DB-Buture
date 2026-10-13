@@ -2,7 +2,7 @@
 //   node scripts/e2e/run.mjs <outDir>
 // Needs: dev bridge (cargo build --example dev_bridge), the Vite dev server, and the Docker
 // test databases (see src-tauri/tests). Writes screenshots to <outDir>.
-import { spawn } from "node:child_process";
+import { execFileSync, spawn } from "node:child_process";
 import { mkdirSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { launchBrowser } from "./cdp.mjs";
@@ -257,6 +257,51 @@ try {
     await b.waitFor(`document.querySelectorAll('.react-flow__node').length === 2`, 15000);
     await b.sleep(600);
     await b.shot(join(out, "21-imported-erd.png"));
+  });
+
+  await step("mysql connect (ui)", async () => {
+    await b.clickText("Disconnect");
+    await b.waitFor(`document.body.innerText.includes("CONNECT DATABASE")`);
+    await b.clickText("MySQL");
+    await b.eval(`(() => {
+      const set = (el, v) => { Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value").set.call(el, v); el.dispatchEvent(new Event("input", { bubbles: true })); };
+      const i = [...document.querySelectorAll("form input")];
+      set(i[0], "test mysql"); set(i[1], "127.0.0.1"); set(i[2], "33069"); set(i[3], "shop_fixture"); set(i[4], "root"); set(i[5], "buture_test");
+      const sel = document.querySelector("form select");
+      Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype, "value").set.call(sel, "disable"); sel.dispatchEvent(new Event("change", { bubbles: true }));
+    })()`);
+    await b.clickText("Connect");
+    await b.waitFor(`document.body.innerText.includes("DATABASE OVERVIEW")`);
+    await b.clickText("ER Diagram", "nav button");
+    await b.waitFor(`document.querySelectorAll('.react-flow__node').length === 4`, 15000);
+    await b.sleep(700);
+    await b.shot(join(out, "22-mysql-erd.png"));
+  });
+
+  await step("sqlite connect (ui)", async () => {
+    const db = join(out, "fixture.sqlite");
+    execFileSync("sh", [
+      "-c",
+      `rm -f '${db}' && sqlite3 '${db}' "CREATE TABLE users (id INTEGER PRIMARY KEY, email TEXT NOT NULL UNIQUE); CREATE TABLE orders (id INTEGER PRIMARY KEY, user_id INTEGER REFERENCES users(id), total REAL); CREATE VIEW v AS SELECT * FROM orders;"`,
+    ]);
+    await b.clickText("Disconnect");
+    await b.waitFor(`document.body.innerText.includes("CONNECT DATABASE")`);
+    await b.clickText("SQLite");
+    await b.eval(`(() => {
+      const set = (el, v) => { Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value").set.call(el, v); el.dispatchEvent(new Event("input", { bubbles: true })); };
+      const i = [...document.querySelectorAll("form input")];
+      set(i[0], "test sqlite"); set(i[1], ${JSON.stringify(db)});
+    })()`);
+    await b.clickText("Connect");
+    await b.waitFor(`document.body.innerText.includes("DATABASE OVERVIEW")`);
+    await b.clickText("SQL Editor", "nav button");
+    await b.waitFor(`document.querySelector('.cm-content')`);
+    await b.insertText(".cm-content", "SELECT name, type FROM sqlite_schema ORDER BY name");
+    await b.key("Enter", { ctrl: true });
+    await b.waitFor(
+      `document.body.innerText.includes("rows") && document.body.innerText.includes("users")`,
+    );
+    await b.shot(join(out, "23-sqlite-sql.png"));
   });
 
   console.log(b.logs.length ? `browser logs:\n${b.logs.join("\n")}` : "no browser errors");

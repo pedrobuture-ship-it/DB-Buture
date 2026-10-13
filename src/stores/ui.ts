@@ -53,5 +53,6 @@ export const useUi = create<UiState>((set) => ({
   select: (selectedId, view) => set((s) => ({ selectedId, view: view ?? s.view })),
   setShowSystemSchemas: (showSystemSchemas) => set({ showSystemSchemas }),
   setPaletteOpen: (paletteOpen) => set({ paletteOpen }),
-  reset: () => set({ view: "overview", selectedId: null, paletteOpen: false, importOpen: false }),
+  reset: () =>
+    set({ view: "overview", selectedId: null, paletteOpen: false, importOpen: false, sqlText: "" }),
 }));
