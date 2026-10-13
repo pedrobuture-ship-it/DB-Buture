@@ -9,6 +9,8 @@ export interface ErdNodeData extends Record<string, unknown> {
   table: Table;
   /** Level of detail: compact nodes only show the table name. */
   compact: boolean;
+  /** Huge schema: at very low zoom nodes render as bare blocks (no text, no handles). */
+  huge: boolean;
   highlighted: boolean;
   dimmed: boolean;
   /** Heatmap tint; null when the heatmap is off. */

@@ -17,6 +17,7 @@ const E: Engine = Engine::Postgres;
 pub fn normalize(raw: RawCatalog) -> DatabaseSchema {
     let mut schema = DatabaseSchema::empty(E, raw.database.clone());
     schema.server_version = Some(raw.version.clone());
+    schema.warnings.extend(raw.warnings.iter().cloned());
 
     schema.namespaces = raw
         .namespaces

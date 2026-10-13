@@ -3,6 +3,7 @@ import { useEffect, useState } from "react";
 import { Mono, cx } from "@/components/ui";
 import { useRefreshSchema, useSchema } from "@/hooks/queries";
 import { engineLabel, formatAge } from "@/lib/format";
+import { ipc } from "@/lib/ipc";
 import type { ActiveInfo } from "@/types/schema";
 
 export function StatusBar({ info }: { info: ActiveInfo }) {
@@ -34,12 +35,21 @@ export function StatusBar({ info }: { info: ActiveInfo }) {
         <button
           type="button"
           onClick={() => refresh.mutate()}
-          disabled={refresh.isPending}
+          disabled={refresh.isPending || info.imported}
           className="flex items-center gap-1 text-fg-muted hover:text-cyan disabled:opacity-50"
           aria-label="Refresh metadata"
         >
           <RefreshCw size={11} className={cx(refresh.isPending && "animate-spin")} /> refresh
         </button>
+        {refresh.isPending && (
+          <button
+            type="button"
+            onClick={() => void ipc.cancelQuery("introspection")}
+            className="text-red hover:underline"
+          >
+            cancel
+          </button>
+        )}
       </span>
     </footer>
   );

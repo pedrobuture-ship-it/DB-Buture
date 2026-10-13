@@ -49,18 +49,65 @@ pub async fn fetch_catalog(pool: &PgPool, include_system: bool) -> AppResult<Raw
         .fetch_one(&mut *tx)
         .await
         .map_err(map)?;
+    // Core sections must succeed. Optional sections are read behind a savepoint so a missing
+    // privilege degrades the result (with a warning) instead of failing the whole introspection.
+    let mut warnings: Vec<String> = vec![];
+    macro_rules! soft {
+        ($label:expr, $q:expr) => {{
+            sqlx::query("SAVEPOINT buture_soft")
+                .execute(&mut *tx)
+                .await
+                .map_err(map)?;
+            match sqlx::query_as($q)
+                .bind(include_system)
+                .fetch_all(&mut *tx)
+                .await
+            {
+                Ok(v) => {
+                    sqlx::query("RELEASE SAVEPOINT buture_soft")
+                        .execute(&mut *tx)
+                        .await
+                        .map_err(map)?;
+                    v
+                }
+                Err(e) => {
+                    sqlx::query("ROLLBACK TO SAVEPOINT buture_soft")
+                        .execute(&mut *tx)
+                        .await
+                        .map_err(map)?;
+                    warnings.push(format!(
+                        "{} could not be read and are missing from this view: {}",
+                        $label,
+                        e.to_string().lines().next().unwrap_or("error")
+                    ));
+                    vec![]
+                }
+            }
+        }};
+    }
+
+    let namespaces = rows!(queries::NAMESPACES);
+    let relations = rows!(queries::RELATIONS);
+    let columns = rows!(queries::COLUMNS);
+    let constraints = rows!(queries::CONSTRAINTS);
+    let indexes = rows!(queries::INDEXES);
+    let view_dependencies = soft!("view dependencies", queries::VIEW_DEPENDENCIES);
+    let triggers = soft!("triggers", queries::TRIGGERS);
+    let sequences = soft!("sequences", queries::SEQUENCES);
+    let routines = soft!("routines", queries::ROUTINES);
     let catalog = RawCatalog {
         version,
         database,
-        namespaces: rows!(queries::NAMESPACES),
-        relations: rows!(queries::RELATIONS),
-        columns: rows!(queries::COLUMNS),
-        constraints: rows!(queries::CONSTRAINTS),
-        indexes: rows!(queries::INDEXES),
-        view_dependencies: rows!(queries::VIEW_DEPENDENCIES),
-        triggers: rows!(queries::TRIGGERS),
-        sequences: rows!(queries::SEQUENCES),
-        routines: rows!(queries::ROUTINES),
+        namespaces,
+        relations,
+        columns,
+        constraints,
+        indexes,
+        view_dependencies,
+        triggers,
+        sequences,
+        routines,
+        warnings,
     };
     tx.rollback().await.map_err(map)?;
     Ok(catalog)

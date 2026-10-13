@@ -10,12 +10,23 @@ const markerColor = { PK: "text-amber", FK: "text-cyan", UQ: "text-fg-muted" } a
 
 // Below this zoom the node collapses to its title (level of detail).
 const zoomSelector = (s: { transform: [number, number, number] }) => s.transform[2] < 0.45;
+const ultraLowSelector = (s: { transform: [number, number, number] }) => s.transform[2] < 0.2;
 
 function TableNodeImpl({ data, selected }: NodeProps<TableFlowNode>) {
   const lowZoom = useStore(zoomSelector);
+  const ultraLow = useStore(ultraLowSelector);
   const { table } = data;
   const compact = data.compact || lowZoom;
   const { shown, hidden } = visibleColumns(table);
+
+  if (data.huge && ultraLow) {
+    return (
+      <div
+        className="w-[248px] rounded-sm border border-line-strong bg-ink-3"
+        style={{ height: HEADER_H, ...(data.heat ? { backgroundColor: data.heat.color } : {}) }}
+      />
+    );
+  }
 
   return (
     <div

@@ -32,6 +32,9 @@ pub struct Active {
 
 /// Introspection result plus derived structures, shared between commands.
 pub struct CachedSchema {
+    /// Expensive derived results, computed once per introspection on a blocking thread.
+    pub audit: tokio::sync::OnceCell<Arc<crate::commands::analysis::AuditReport>>,
+    pub centrality: tokio::sync::OnceCell<Arc<Vec<crate::analysis::centrality::TableCentrality>>>,
     pub schema: DatabaseSchema,
     pub graph: SchemaGraph,
     pub fetched_at: String,
@@ -42,6 +45,8 @@ pub struct CachedSchema {
 impl CachedSchema {
     pub fn new(schema: DatabaseSchema, include_system: bool) -> Self {
         Self {
+            audit: tokio::sync::OnceCell::new(),
+            centrality: tokio::sync::OnceCell::new(),
             graph: SchemaGraph::build(&schema),
             fingerprint: snapshot::sha256_hex(&schema),
             fetched_at: chrono::Utc::now().to_rfc3339(),

@@ -208,7 +208,18 @@ pub async fn simulate_migration(
 #[tauri::command]
 pub async fn table_centrality(state: State<'_, AppState>) -> AppResult<Vec<TableCentrality>> {
     let cached = state.current().await?;
-    Ok(centrality::centrality(&cached.schema))
+    let result = cached
+        .centrality
+        .get_or_try_init(|| async {
+            let c = cached.clone();
+            tokio::task::spawn_blocking(move || {
+                std::sync::Arc::new(centrality::centrality(&c.schema))
+            })
+            .await
+            .map_err(|e| AppError::Internal(e.to_string()))
+        })
+        .await?;
+    Ok((**result).clone())
 }
 
 #[derive(Serialize)]

@@ -7,6 +7,7 @@ import {
   ReactFlow,
   ReactFlowProvider,
   useReactFlow,
+  useStore,
   type Edge,
   type NodeChange,
 } from "@xyflow/react";
@@ -30,6 +31,8 @@ const nodeTypes = { table: TableNode };
 const LAYOUT_KIND = "erd";
 /** Above this many tables nodes start collapsed (level of detail). */
 const COMPACT_ABOVE = 150;
+/** Above this many tables the default layout is the compact packing. */
+const HUGE_ABOVE = 1500;
 
 type Depth = 1 | 2 | 3 | "all";
 
@@ -39,7 +42,9 @@ function ErdCanvas() {
   const select = useUi((s) => s.select);
   const flow = useReactFlow();
   const [nodes, setNodes] = useState<TableFlowNode[]>([]);
-  const [mode, setMode] = useState<LayoutMode>("hierarchical");
+  const [userMode, setUserMode] = useState<LayoutMode | null>(null);
+  const [layingOut, setLayingOut] = useState(false);
+  const [allEdges, setAllEdges] = useState(false);
   const [focus, setFocus] = useState<{ id: StableId; depth: Depth } | null>(null);
   const [focusResult, setFocusResult] = useState<{ key: string; ids: Set<StableId> } | null>(null);
   const [menu, setMenu] = useState<{ id: StableId; x: number; y: number } | null>(null);
@@ -64,6 +69,8 @@ function ErdCanvas() {
     return focusIds ? schema.tables.filter((t) => focusIds.has(t.stableId)) : schema.tables;
   }, [schema, focusIds]);
   const compact = tables.length > COMPACT_ABOVE;
+  // Very large schemas default to the cheap compact packing; the user can still pick any mode.
+  const mode: LayoutMode = userMode ?? (tables.length > HUGE_ABOVE ? "compact" : "hierarchical");
 
   const visibleIds = useMemo(() => new Set(tables.map((t) => t.stableId)), [tables]);
   const erdEdges = useMemo(
@@ -93,11 +100,12 @@ function ErdCanvas() {
 
   const runAutoLayout = useCallback(
     async (m: LayoutMode, list = tables, edgesList = erdEdges) => {
+      setLayingOut(true);
       const pos = await autoLayout(
         list.map((t) => ({ id: t.stableId, width: NODE_WIDTH, height: nodeHeight(t, compact) })),
         edgesList.map((e) => ({ id: e.id, source: e.source, target: e.target })),
         m,
-      );
+      ).finally(() => setLayingOut(false));
       positions.current = { positions: { ...positions.current.positions, ...pos }, manual: false };
       setNodes((prev) =>
         prev.map((n) => (pos[n.id] ? { ...n, position: pos[n.id] ?? n.position } : n)),
@@ -119,6 +127,7 @@ function ErdCanvas() {
       if (saved) positions.current = saved;
       const missing = tables.filter((t) => !positions.current.positions[t.stableId]);
       if (missing.length > 0) {
+        setLayingOut(true);
         const pos = await autoLayout(
           tables.map((t) => ({
             id: t.stableId,
@@ -127,7 +136,7 @@ function ErdCanvas() {
           })),
           erdEdges.map((e) => ({ id: e.id, source: e.source, target: e.target })),
           mode,
-        );
+        ).finally(() => setLayingOut(false));
         if (cancelled) return;
         const keepManual = positions.current.manual;
         for (const t of missing)
@@ -143,6 +152,7 @@ function ErdCanvas() {
           data: {
             table: t,
             compact,
+            huge: tables.length > HUGE_ABOVE,
             highlighted: false,
             dimmed: false,
             heat: null,
@@ -212,9 +222,25 @@ function ErdCanvas() {
     [nodes, related, selectedId, heat, pathNodes],
   );
 
+  // Huge schemas: drawing thousands of edges is the main render cost, so by default only the
+  // edges of the selected / path tables are drawn. The toggle brings them all back.
+  const hugeMode = tables.length > HUGE_ABOVE;
+  // at very low zoom huge diagrams draw no edges at all (nodes have no handles there)
+  const ultraLow = useStore((st) => st.transform[2] < 0.2);
+  const drawnEdges = useMemo(() => {
+    if (hugeMode && ultraLow) return [];
+    if (!hugeMode || allEdges) return erdEdges;
+    return erdEdges.filter(
+      (e) =>
+        e.source === selectedId ||
+        e.target === selectedId ||
+        pathEdgeKeys.has(`${e.source}|${e.target}`),
+    );
+  }, [hugeMode, ultraLow, allEdges, erdEdges, selectedId, pathEdgeKeys]);
+
   const edges: Edge[] = useMemo(
     () =>
-      erdEdges.map((e) => {
+      drawnEdges.map((e) => {
         const onPath = pathEdgeKeys.has(`${e.source}|${e.target}`);
         const active =
           pathNodes.size > 0
@@ -248,7 +274,7 @@ function ErdCanvas() {
           zIndex: active ? 10 : 0,
         } satisfies Edge;
       }),
-    [erdEdges, selectedId, related, compact, pathNodes, pathEdgeKeys],
+    [drawnEdges, selectedId, related, compact, pathNodes, pathEdgeKeys],
   );
 
   const onNodesChange = useCallback(
@@ -329,7 +355,7 @@ function ErdCanvas() {
         <select
           aria-label="Layout mode"
           value={mode}
-          onChange={(e) => setMode(e.target.value as LayoutMode)}
+          onChange={(e) => setUserMode(e.target.value as LayoutMode)}
           className="h-7 rounded-sm border border-line-strong bg-ink-2 px-1.5 font-mono text-[11px]"
         >
           {(Object.keys(LAYOUT_LABELS) as LayoutMode[]).map((m) => (
@@ -469,6 +495,27 @@ function ErdCanvas() {
             <span>{heat.legend.max}</span>
           </div>
           <p className="mt-1 text-[10px] text-fg-dim">{heat.legend.note}</p>
+        </div>
+      )}
+      {hugeMode && (
+        <div className="absolute right-3 top-3 z-10 flex items-center gap-2 rounded-md border border-line bg-ink-1/95 px-2.5 py-1.5 text-[11px] text-fg-muted">
+          <span>{tables.length} tables · edges drawn for the selection only</span>
+          <label className="flex items-center gap-1 text-fg">
+            <input
+              type="checkbox"
+              checked={allEdges}
+              onChange={(e) => setAllEdges(e.target.checked)}
+            />
+            all edges
+          </label>
+        </div>
+      )}
+      {layingOut && (
+        <div
+          role="status"
+          className="absolute left-1/2 top-3 z-10 -translate-x-1/2 rounded-md border border-cyan-dim bg-ink-1/95 px-3 py-1.5 font-mono text-[11px] text-cyan"
+        >
+          Laying out {tables.length} tables…
         </div>
       )}
       {layoutError && (

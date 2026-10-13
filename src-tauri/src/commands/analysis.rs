@@ -1,3 +1,5 @@
+use std::sync::Arc;
+
 use serde::Serialize;
 use tauri::State;
 
@@ -24,7 +26,7 @@ pub async fn analyze_impact(
         .ok_or_else(|| AppError::Validation("object not found in the loaded schema".into()))
 }
 
-#[derive(Serialize)]
+#[derive(Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct AuditReport {
     pub findings: Vec<Finding>,
@@ -35,13 +37,24 @@ pub struct AuditReport {
 #[tauri::command]
 pub async fn run_audit(state: State<'_, AppState>) -> AppResult<AuditReport> {
     let cached = state.current().await?;
-    let findings = audit::run_audit(&cached.schema, &cached.graph);
-    let health = audit::health(&cached.schema, &findings);
-    Ok(AuditReport {
-        findings,
-        health,
-        rules: audit::rule_catalog(),
-    })
+    let report = cached
+        .audit
+        .get_or_try_init(|| async {
+            let c = cached.clone();
+            tokio::task::spawn_blocking(move || {
+                let findings = audit::run_audit(&c.schema, &c.graph);
+                let health = audit::health(&c.schema, &findings);
+                Arc::new(AuditReport {
+                    findings,
+                    health,
+                    rules: audit::rule_catalog(),
+                })
+            })
+            .await
+            .map_err(|e| AppError::Internal(e.to_string()))
+        })
+        .await?;
+    Ok((**report).clone())
 }
 
 #[derive(Serialize)]

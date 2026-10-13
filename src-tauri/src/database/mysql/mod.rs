@@ -108,12 +108,28 @@ pub async fn introspect(pool: &MySqlPool) -> AppResult<DatabaseSchema> {
         .fetch_all(pool)
         .await
         .map_err(map)?;
-    let checks = sqlx::query(CHECKS).fetch_all(pool).await.map_err(map)?;
+    let checks = soft(
+        "check constraints",
+        sqlx::query(CHECKS).fetch_all(pool).await,
+        &mut schema.warnings,
+    );
     let indexes = sqlx::query(INDEXES).fetch_all(pool).await.map_err(map)?;
     let views = sqlx::query(VIEWS).fetch_all(pool).await.map_err(map)?;
-    let usage = sqlx::query(VIEW_USAGE).fetch_all(pool).await.map_err(map)?;
-    let triggers = sqlx::query(TRIGGERS).fetch_all(pool).await.map_err(map)?;
-    let routines = sqlx::query(ROUTINES).fetch_all(pool).await.map_err(map)?;
+    let usage = soft(
+        "view dependencies",
+        sqlx::query(VIEW_USAGE).fetch_all(pool).await,
+        &mut schema.warnings,
+    );
+    let triggers = soft(
+        "triggers",
+        sqlx::query(TRIGGERS).fetch_all(pool).await,
+        &mut schema.warnings,
+    );
+    let routines = soft(
+        "routines",
+        sqlx::query(ROUTINES).fetch_all(pool).await,
+        &mut schema.warnings,
+    );
 
     let mut cols: HashMap<String, Vec<Column>> = HashMap::new();
     for r in &columns {
@@ -441,6 +457,20 @@ pub async fn introspect(pool: &MySqlPool) -> AppResult<DatabaseSchema> {
     }
     schema.warnings.sort();
     Ok(schema)
+}
+
+/// Optional sections degrade to a warning instead of failing the whole introspection.
+fn soft<T>(label: &str, r: Result<Vec<T>, sqlx::Error>, warnings: &mut Vec<String>) -> Vec<T> {
+    match r {
+        Ok(v) => v,
+        Err(e) => {
+            warnings.push(format!(
+                "{label} could not be read and are missing from this view: {}",
+                e.to_string().lines().next().unwrap_or("error")
+            ));
+            vec![]
+        }
+    }
 }
 
 fn action(rule: Option<&str>) -> ReferentialAction {

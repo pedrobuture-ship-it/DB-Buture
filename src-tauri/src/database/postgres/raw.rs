@@ -129,4 +129,6 @@ pub struct RawCatalog {
     pub triggers: Vec<RawTrigger>,
     pub sequences: Vec<RawSequence>,
     pub routines: Vec<RawRoutine>,
+    /// Optional sections that could not be read (for example for lack of privileges).
+    pub warnings: Vec<String>,
 }

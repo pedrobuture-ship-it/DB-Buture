@@ -223,3 +223,49 @@ async fn session_is_read_only_and_times_out() {
         .unwrap();
     assert!(!bad.to_string().contains("super-secret-wrong"));
 }
+
+/// A privilege problem in an optional catalog section degrades the result instead of failing it.
+#[tokio::test]
+async fn partial_introspection_when_a_section_is_unreadable() {
+    let Some(admin) = pool().await else { return };
+    sqlx::raw_sql(
+        "DO $$ BEGIN IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'buture_limited') THEN
+           CREATE ROLE buture_limited LOGIN PASSWORD 'limited_pw'; END IF; END $$;
+         GRANT USAGE ON SCHEMA shop TO buture_limited;
+         GRANT SELECT ON ALL TABLES IN SCHEMA shop TO buture_limited;
+         REVOKE SELECT ON pg_catalog.pg_sequence FROM PUBLIC;",
+    )
+    .execute(&admin)
+    .await
+    .unwrap();
+
+    let result = async {
+        let limited = PgPoolOptions::new()
+            .max_connections(1)
+            .connect("postgres://buture_limited:limited_pw@127.0.0.1:54329/buture")
+            .await
+            .unwrap();
+        postgres::introspect(&limited, false).await
+    }
+    .await;
+
+    // always restore the catalog privilege, whatever happened above
+    sqlx::raw_sql("GRANT SELECT ON pg_catalog.pg_sequence TO PUBLIC;")
+        .execute(&admin)
+        .await
+        .unwrap();
+
+    let s = result.expect("introspection must still succeed");
+    assert!(
+        s.tables.iter().any(|t| t.name == "users"),
+        "core sections are intact"
+    );
+    assert!(s.sequences.is_empty());
+    assert!(
+        s.warnings
+            .iter()
+            .any(|w| w.contains("sequences could not be read")),
+        "{:?}",
+        s.warnings
+    );
+}
