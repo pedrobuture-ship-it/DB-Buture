@@ -1,3 +1,7 @@
+pub mod analysis;
+pub mod connections;
+pub mod schema;
+
 use serde::Serialize;
 
 #[derive(Serialize)]
