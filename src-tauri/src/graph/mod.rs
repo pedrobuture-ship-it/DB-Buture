@@ -192,6 +192,16 @@ impl SchemaGraph {
 
     /// Everything within `hops` of `id`, ignoring edge direction (Focus Mode).
     pub fn neighborhood(&self, id: &StableId, hops: Option<usize>) -> Vec<StableId> {
+        self.neighborhood_of(id, hops, None)
+    }
+
+    /// Like [`Self::neighborhood`], optionally following only the given edge kinds.
+    pub fn neighborhood_of(
+        &self,
+        id: &StableId,
+        hops: Option<usize>,
+        kinds: Option<&[DependencyKind]>,
+    ) -> Vec<StableId> {
         let Some(&start) = self.index.get(id) else {
             return vec![];
         };
@@ -201,7 +211,20 @@ impl SchemaGraph {
             if hops.is_some_and(|h| d >= h) {
                 continue;
             }
-            for m in self.graph.neighbors_undirected(n) {
+            for e in self
+                .graph
+                .edges(n)
+                .chain(self.graph.edges_directed(n, Direction::Incoming))
+            {
+                use petgraph::visit::EdgeRef;
+                if kinds.is_some_and(|k| !k.contains(e.weight())) {
+                    continue;
+                }
+                let m = if e.source() == n {
+                    e.target()
+                } else {
+                    e.source()
+                };
                 if seen.insert(m) {
                     queue.push_back((m, d + 1));
                 }
@@ -462,6 +485,15 @@ mod tests {
         assert_eq!(g.neighborhood(&tid("users"), Some(1)).len(), 2);
         assert_eq!(g.neighborhood(&tid("users"), None).len(), 5);
         assert_eq!(g.neighborhood(&tid("lonely"), None).len(), 1);
+    }
+
+    #[test]
+    fn neighborhood_can_follow_only_foreign_keys() {
+        let g = SchemaGraph::build(&sample());
+        let fk = [DependencyKind::ForeignKey];
+        let ids = g.neighborhood_of(&tid("orders"), None, Some(&fk));
+        assert_eq!(ids.len(), 3, "users, orders, order_items; views excluded");
+        assert!(!ids.contains(&vid("v_orders")));
     }
 
     #[test]

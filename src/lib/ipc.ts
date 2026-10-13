@@ -37,6 +37,12 @@ async function call<T>(cmd: string, args?: Record<string, unknown>): Promise<T> 
   }
 }
 
+/** Node positions keyed by stable id. `manual` means the user moved something. */
+export interface SavedLayout {
+  positions: Record<string, { x: number; y: number }>;
+  manual: boolean;
+}
+
 export interface ConnectInput {
   savedId?: string;
   config?: ConnectionConfig;
@@ -63,7 +69,12 @@ export const ipc = {
   loadSchema: (refresh: boolean, includeSystem: boolean) =>
     call<SchemaPayload>("load_schema", { refresh, includeSystem }),
   dependencyGraph: () => call<GraphView>("dependency_graph"),
-  neighborhood: (id: StableId, hops?: number) => call<StableId[]>("neighborhood", { id, hops }),
+  neighborhood: (id: StableId, hops?: number, foreignKeysOnly = false) =>
+    call<StableId[]>("neighborhood", { id, hops, foreignKeysOnly }),
+  getLayout: (viewKind: string) => call<SavedLayout | null>("get_layout", { viewKind }),
+  saveLayout: (viewKind: string, layout: SavedLayout) =>
+    call<null>("save_layout", { viewKind, layout }),
+  clearLayout: (viewKind: string) => call<null>("clear_layout", { viewKind }),
   findPath: (from: StableId, to: StableId) =>
     call<{ shortest: StableId[] | null; alternatives: StableId[][] }>("find_path", { from, to }),
   analyzeImpact: (objectId: StableId) => call<ImpactReport>("analyze_impact", { objectId }),

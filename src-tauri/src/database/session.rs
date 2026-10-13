@@ -104,6 +104,21 @@ impl Session {
         Ok(start.elapsed().as_millis() as u64)
     }
 
+    /// Stable identity of the database (never includes credentials), used to persist layouts.
+    pub fn layout_key(&self) -> String {
+        use sha2::{Digest, Sha256};
+        let c = &self.config;
+        let raw = format!(
+            "{}|{}|{}|{}|{}",
+            c.engine.slug(),
+            c.host.as_deref().unwrap_or(""),
+            c.port.map(|p| p.to_string()).unwrap_or_default(),
+            c.database.as_deref().unwrap_or(""),
+            c.file_path.as_deref().unwrap_or("")
+        );
+        hex::encode(Sha256::digest(raw.as_bytes()))
+    }
+
     pub fn database_name(&self) -> String {
         match self.config.engine {
             Engine::Sqlite => self

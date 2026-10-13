@@ -3,7 +3,7 @@ use tauri::State;
 
 use crate::error::{AppError, AppResult};
 use crate::graph::GraphView;
-use crate::metadata::{DatabaseSchema, StableId};
+use crate::metadata::{DatabaseSchema, DependencyKind, StableId};
 use crate::state::AppState;
 
 #[derive(Serialize)]
@@ -41,11 +41,39 @@ pub async fn neighborhood(
     state: State<'_, AppState>,
     id: String,
     hops: Option<usize>,
+    foreign_keys_only: Option<bool>,
 ) -> AppResult<Vec<StableId>> {
     let cached = state.current().await?;
     let id: StableId = serde_json::from_value(serde_json::Value::String(id))
         .map_err(|e| AppError::Validation(e.to_string()))?;
-    Ok(cached.graph.neighborhood(&id, hops))
+    let fk = [DependencyKind::ForeignKey];
+    let kinds: Option<&[DependencyKind]> = foreign_keys_only.unwrap_or(false).then_some(&fk[..]);
+    Ok(cached.graph.neighborhood_of(&id, hops, kinds))
+}
+
+#[tauri::command]
+pub async fn get_layout(
+    state: State<'_, AppState>,
+    view_kind: String,
+) -> AppResult<Option<serde_json::Value>> {
+    let key = state.session().await?.layout_key();
+    state.storage.get_layout(&key, &view_kind).await
+}
+
+#[tauri::command]
+pub async fn save_layout(
+    state: State<'_, AppState>,
+    view_kind: String,
+    layout: serde_json::Value,
+) -> AppResult<()> {
+    let key = state.session().await?.layout_key();
+    state.storage.save_layout(&key, &view_kind, &layout).await
+}
+
+#[tauri::command]
+pub async fn clear_layout(state: State<'_, AppState>, view_kind: String) -> AppResult<()> {
+    let key = state.session().await?.layout_key();
+    state.storage.delete_layout(&key, &view_kind).await
 }
 
 #[derive(Serialize)]

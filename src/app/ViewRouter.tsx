@@ -1,3 +1,4 @@
+import { ErdView } from "@/features/erd/ErdView";
 import { Explorer } from "@/features/explorer/Explorer";
 import { Overview } from "@/features/overview/Overview";
 import { Placeholder } from "@/features/shell/Placeholder";
@@ -10,6 +11,8 @@ export function ViewRouter() {
       return <Overview />;
     case "explorer":
       return <Explorer />;
+    case "erd":
+      return <ErdView />;
     default:
       return <Placeholder view={view} />;
   }
