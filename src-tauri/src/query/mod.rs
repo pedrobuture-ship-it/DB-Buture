@@ -46,10 +46,13 @@ pub fn to_json(type_name: &str, text: Option<String>) -> Value {
     let Some(t) = text else { return Value::Null };
     let ty = type_name.to_uppercase();
     match ty.as_str() {
-        "INT2" | "INT4" | "INT8" | "OID" | "TINYINT" | "SMALLINT" | "MEDIUMINT" | "INT" | "INTEGER" | "BIGINT"
-        | "TINYINT UNSIGNED" | "SMALLINT UNSIGNED" | "MEDIUMINT UNSIGNED" | "INT UNSIGNED" | "BIGINT UNSIGNED" => {
-            t.parse::<i64>().map(Value::from).or_else(|_| t.parse::<u64>().map(Value::from)).unwrap_or(Value::String(t))
-        }
+        "INT2" | "INT4" | "INT8" | "OID" | "TINYINT" | "SMALLINT" | "MEDIUMINT" | "INT"
+        | "INTEGER" | "BIGINT" | "TINYINT UNSIGNED" | "SMALLINT UNSIGNED"
+        | "MEDIUMINT UNSIGNED" | "INT UNSIGNED" | "BIGINT UNSIGNED" => t
+            .parse::<i64>()
+            .map(Value::from)
+            .or_else(|_| t.parse::<u64>().map(Value::from))
+            .unwrap_or(Value::String(t)),
         "FLOAT4" | "FLOAT8" | "FLOAT" | "DOUBLE" | "REAL" => match t.parse::<f64>() {
             Ok(f) if f.is_finite() => json!(f),
             _ => Value::String(t),
@@ -79,7 +82,8 @@ pub async fn run_query(
 ) -> AppResult<QueryResult> {
     check_read_only(sql, session.config.engine)?;
     let limit = clamp_limit(limit);
-    let timeout = Duration::from_millis(timeout_ms.unwrap_or(DEFAULT_TIMEOUT_MS).clamp(100, 600_000));
+    let timeout =
+        Duration::from_millis(timeout_ms.unwrap_or(DEFAULT_TIMEOUT_MS).clamp(100, 600_000));
     let start = Instant::now();
 
     // Only plain queries can be wrapped to cap the result; SHOW/EXPLAIN statements are small.
@@ -90,7 +94,14 @@ pub async fn run_query(
             .map(|s| matches!(s.first(), Some(sqlparser::ast::Statement::Query(_))))
             .unwrap_or(true)
     };
-    let wrapped = if is_query { format!("SELECT * FROM ({body}) AS buture_result LIMIT {}", limit + 1) } else { body.to_string() };
+    let wrapped = if is_query {
+        format!(
+            "SELECT * FROM ({body}) AS buture_result LIMIT {}",
+            limit + 1
+        )
+    } else {
+        body.to_string()
+    };
 
     let exec = execute(session, wrapped, limit);
     tokio::pin!(exec);
@@ -112,54 +123,112 @@ async fn execute(session: &Session, sql: String, limit: usize) -> AppResult<Quer
     match &session.pool {
         Pool::Postgres(p) => {
             let mut conn = p.acquire().await.map_err(map)?;
-            let pid: i32 = sqlx::query_scalar("SELECT pg_backend_pid()").fetch_one(&mut *conn).await.map_err(map)?;
+            let pid: i32 = sqlx::query_scalar("SELECT pg_backend_pid()")
+                .fetch_one(&mut *conn)
+                .await
+                .map_err(map)?;
             session.set_running(pid as i64);
-            let rows = sqlx::raw_sql(AssertSqlSafe(sql.clone())).fetch_all(&mut *conn).await;
+            let rows = sqlx::raw_sql(AssertSqlSafe(sql.clone()))
+                .fetch_all(&mut *conn)
+                .await;
             session.clear_running();
             let rows = rows.map_err(map)?;
-            let cols = rows.first().map(|r| r.columns().iter().map(|c| (c.name().to_string(), c.type_info().name().to_string())).collect()).unwrap_or_default();
-            let cols: Vec<(String, String)> = if rows.is_empty() { describe_pg(&mut conn, &sql).await } else { cols };
+            let cols = rows
+                .first()
+                .map(|r| {
+                    r.columns()
+                        .iter()
+                        .map(|c| (c.name().to_string(), c.type_info().name().to_string()))
+                        .collect()
+                })
+                .unwrap_or_default();
+            let cols: Vec<(String, String)> = if rows.is_empty() {
+                describe_pg(&mut conn, &sql).await
+            } else {
+                cols
+            };
             let data = rows
                 .iter()
                 .take(limit)
-                .map(|r| (0..r.columns().len()).map(|i| to_json(r.columns()[i].type_info().name(), r.try_get_unchecked::<Option<String>, _>(i).ok().flatten())).collect())
+                .map(|r| {
+                    (0..r.columns().len())
+                        .map(|i| {
+                            to_json(
+                                r.columns()[i].type_info().name(),
+                                r.try_get_unchecked::<Option<String>, _>(i).ok().flatten(),
+                            )
+                        })
+                        .collect()
+                })
                 .collect::<Vec<Vec<Value>>>();
             Ok(finish(cols, data, rows.len() > limit, limit))
         }
         Pool::Mysql(p) => {
             let mut conn = p.acquire().await.map_err(map)?;
-            let id: i64 = sqlx::query_scalar("SELECT CAST(CONNECTION_ID() AS SIGNED)").fetch_one(&mut *conn).await.map_err(map)?;
+            let id: i64 = sqlx::query_scalar("SELECT CAST(CONNECTION_ID() AS SIGNED)")
+                .fetch_one(&mut *conn)
+                .await
+                .map_err(map)?;
             session.set_running(id);
             let body_for_describe = sql.clone();
-            let rows = sqlx::raw_sql(AssertSqlSafe(sql)).fetch_all(&mut *conn).await;
+            let rows = sqlx::raw_sql(AssertSqlSafe(sql))
+                .fetch_all(&mut *conn)
+                .await;
             session.clear_running();
             let rows = rows.map_err(map)?;
             let cols: Vec<(String, String)> = match rows.first() {
-                Some(r) => r.columns().iter().map(|c| (c.name().to_string(), c.type_info().name().to_string())).collect(),
+                Some(r) => r
+                    .columns()
+                    .iter()
+                    .map(|c| (c.name().to_string(), c.type_info().name().to_string()))
+                    .collect(),
                 None => describe_mysql(&mut conn, &body_for_describe).await,
             };
             let data = rows
                 .iter()
                 .take(limit)
-                .map(|r| (0..r.columns().len()).map(|i| to_json(r.columns()[i].type_info().name(), mysql_text(r, i))).collect())
+                .map(|r| {
+                    (0..r.columns().len())
+                        .map(|i| to_json(r.columns()[i].type_info().name(), mysql_text(r, i)))
+                        .collect()
+                })
                 .collect::<Vec<Vec<Value>>>();
             Ok(finish(cols, data, rows.len() > limit, limit))
         }
         Pool::Sqlite(p) => {
-            let rows = sqlx::raw_sql(AssertSqlSafe(sql.clone())).fetch_all(p).await.map_err(map)?;
+            let rows = sqlx::raw_sql(AssertSqlSafe(sql.clone()))
+                .fetch_all(p)
+                .await
+                .map_err(map)?;
             let cols: Vec<(String, String)> = match rows.first() {
-                Some(r) => r.columns().iter().map(|c| (c.name().to_string(), c.type_info().name().to_string())).collect(),
+                Some(r) => r
+                    .columns()
+                    .iter()
+                    .map(|c| (c.name().to_string(), c.type_info().name().to_string()))
+                    .collect(),
                 None => describe_sqlite(p, &sql).await,
             };
-            let data = rows.iter().take(limit).map(|r| (0..r.columns().len()).map(|i| sqlite_value(r, i)).collect()).collect::<Vec<Vec<Value>>>();
+            let data = rows
+                .iter()
+                .take(limit)
+                .map(|r| (0..r.columns().len()).map(|i| sqlite_value(r, i)).collect())
+                .collect::<Vec<Vec<Value>>>();
             Ok(finish(cols, data, rows.len() > limit, limit))
         }
     }
 }
 
-fn finish(cols: Vec<(String, String)>, rows: Vec<Vec<Value>>, truncated: bool, limit: usize) -> QueryResult {
+fn finish(
+    cols: Vec<(String, String)>,
+    rows: Vec<Vec<Value>>,
+    truncated: bool,
+    limit: usize,
+) -> QueryResult {
     QueryResult {
-        columns: cols.into_iter().map(|(name, type_name)| ResultColumn { name, type_name }).collect(),
+        columns: cols
+            .into_iter()
+            .map(|(name, type_name)| ResultColumn { name, type_name })
+            .collect(),
         row_count: rows.len(),
         rows,
         truncated,
@@ -172,8 +241,17 @@ macro_rules! describe_fn {
     ($name:ident, $conn:ty) => {
         /// Column names for a statement without running it (used when a result has no rows).
         async fn $name(conn: $conn, sql: &str) -> Vec<(String, String)> {
-            match Executor::describe(conn, sqlx::SqlSafeStr::into_sql_str(AssertSqlSafe(sql.to_string()))).await {
-                Ok(d) => d.columns().iter().map(|c| (c.name().to_string(), c.type_info().name().to_string())).collect(),
+            match Executor::describe(
+                conn,
+                sqlx::SqlSafeStr::into_sql_str(AssertSqlSafe(sql.to_string())),
+            )
+            .await
+            {
+                Ok(d) => d
+                    .columns()
+                    .iter()
+                    .map(|c| (c.name().to_string(), c.type_info().name().to_string()))
+                    .collect(),
                 Err(_) => vec![],
             }
         }
@@ -188,25 +266,39 @@ fn mysql_text(r: &sqlx::mysql::MySqlRow, i: usize) -> Option<String> {
     if raw.is_null() {
         return None;
     }
-    match r.try_get_unchecked::<Option<Vec<u8>>, _>(i).ok().flatten() {
-        Some(bytes) => Some(String::from_utf8_lossy(&bytes).into_owned()),
-        None => None,
-    }
+    r.try_get_unchecked::<Option<Vec<u8>>, _>(i)
+        .ok()
+        .flatten()
+        .map(|bytes| String::from_utf8_lossy(&bytes).into_owned())
 }
 
 fn sqlite_value(r: &sqlx::sqlite::SqliteRow, i: usize) -> Value {
-    let Ok(raw) = r.try_get_raw(i) else { return Value::Null };
+    let Ok(raw) = r.try_get_raw(i) else {
+        return Value::Null;
+    };
     if raw.is_null() {
         return Value::Null;
     }
     match raw.type_info().name() {
-        "INTEGER" | "INT8" | "BOOLEAN" => r.try_get_unchecked::<i64, _>(i).map(Value::from).unwrap_or(Value::Null),
-        "REAL" => r.try_get_unchecked::<f64, _>(i).map(|f| json!(f)).unwrap_or(Value::Null),
+        "INTEGER" | "INT8" | "BOOLEAN" => r
+            .try_get_unchecked::<i64, _>(i)
+            .map(Value::from)
+            .unwrap_or(Value::Null),
+        "REAL" => r
+            .try_get_unchecked::<f64, _>(i)
+            .map(|f| json!(f))
+            .unwrap_or(Value::Null),
         "BLOB" => {
-            let n = r.try_get_unchecked::<Vec<u8>, _>(i).map(|b| b.len()).unwrap_or(0);
+            let n = r
+                .try_get_unchecked::<Vec<u8>, _>(i)
+                .map(|b| b.len())
+                .unwrap_or(0);
             Value::String(format!("[blob {n} bytes]"))
         }
-        _ => r.try_get_unchecked::<String, _>(i).map(Value::String).unwrap_or(Value::Null),
+        _ => r
+            .try_get_unchecked::<String, _>(i)
+            .map(Value::String)
+            .unwrap_or(Value::Null),
     }
 }
 
@@ -214,10 +306,14 @@ fn map(e: sqlx::Error) -> AppError {
     // The first line of a database error is enough for the UI and never contains credentials.
     let msg = e.to_string();
     let text = msg.lines().next().unwrap_or("query failed").to_string();
-    if text.contains("canceling statement due to statement timeout") || text.contains("maximum statement execution time") {
+    if text.contains("canceling statement due to statement timeout")
+        || text.contains("maximum statement execution time")
+    {
         return AppError::Timeout(crate::database::session::STATEMENT_TIMEOUT_MS);
     }
-    if text.contains("canceling statement due to user request") || text.contains("Query execution was interrupted") {
+    if text.contains("canceling statement due to user request")
+        || text.contains("Query execution was interrupted")
+    {
         return AppError::Cancelled;
     }
     AppError::Introspection(text)
@@ -233,25 +329,48 @@ pub async fn explain(session: &Session, sql: &str) -> AppResult<QueryPlan> {
     };
     if let Ok(stmts) = &parsed {
         if !matches!(stmts.first(), Some(sqlparser::ast::Statement::Query(_))) {
-            return Err(AppError::Validation("only SELECT queries can be explained".into()));
+            return Err(AppError::Validation(
+                "only SELECT queries can be explained".into(),
+            ));
         }
     }
     match &session.pool {
         Pool::Postgres(p) => {
-            let rows = sqlx::raw_sql(AssertSqlSafe(format!("EXPLAIN (FORMAT JSON) {body}"))).fetch_all(p).await.map_err(map)?;
-            let text: String = rows.first().and_then(|r| r.try_get_unchecked::<String, _>(0).ok()).ok_or_else(|| AppError::Introspection("EXPLAIN returned nothing".into()))?;
+            let rows = sqlx::raw_sql(AssertSqlSafe(format!("EXPLAIN (FORMAT JSON) {body}")))
+                .fetch_all(p)
+                .await
+                .map_err(map)?;
+            let text: String = rows
+                .first()
+                .and_then(|r| r.try_get_unchecked::<String, _>(0).ok())
+                .ok_or_else(|| AppError::Introspection("EXPLAIN returned nothing".into()))?;
             plan::parse_postgres(&text)
         }
         Pool::Mysql(p) => {
-            let rows = sqlx::raw_sql(AssertSqlSafe(format!("EXPLAIN FORMAT=JSON {body}"))).fetch_all(p).await.map_err(map)?;
-            let text = rows.first().and_then(|r| mysql_text(r, 0)).ok_or_else(|| AppError::Introspection("EXPLAIN returned nothing".into()))?;
+            let rows = sqlx::raw_sql(AssertSqlSafe(format!("EXPLAIN FORMAT=JSON {body}")))
+                .fetch_all(p)
+                .await
+                .map_err(map)?;
+            let text = rows
+                .first()
+                .and_then(|r| mysql_text(r, 0))
+                .ok_or_else(|| AppError::Introspection("EXPLAIN returned nothing".into()))?;
             plan::parse_mysql(&text)
         }
         Pool::Sqlite(p) => {
-            let rows = sqlx::raw_sql(AssertSqlSafe(format!("EXPLAIN QUERY PLAN {body}"))).fetch_all(p).await.map_err(map)?;
+            let rows = sqlx::raw_sql(AssertSqlSafe(format!("EXPLAIN QUERY PLAN {body}")))
+                .fetch_all(p)
+                .await
+                .map_err(map)?;
             let triples: Vec<(i64, i64, String)> = rows
                 .iter()
-                .map(|r| (r.try_get_unchecked::<i64, _>(0).unwrap_or(0), r.try_get_unchecked::<i64, _>(1).unwrap_or(0), r.try_get_unchecked::<String, _>(3).unwrap_or_default()))
+                .map(|r| {
+                    (
+                        r.try_get_unchecked::<i64, _>(0).unwrap_or(0),
+                        r.try_get_unchecked::<i64, _>(1).unwrap_or(0),
+                        r.try_get_unchecked::<String, _>(3).unwrap_or_default(),
+                    )
+                })
                 .collect();
             plan::parse_sqlite(&triples)
         }
@@ -270,7 +389,10 @@ mod tests {
     #[test]
     fn converts_text_values_by_type() {
         assert_eq!(to_json("INT4", Some("42".into())), json!(42));
-        assert_eq!(to_json("BIGINT UNSIGNED", Some("18446744073709551615".into())), json!(18446744073709551615u64));
+        assert_eq!(
+            to_json("BIGINT UNSIGNED", Some("18446744073709551615".into())),
+            json!(18446744073709551615u64)
+        );
         assert_eq!(to_json("FLOAT8", Some("1.5".into())), json!(1.5));
         assert_eq!(to_json("BOOL", Some("t".into())), json!(true));
         assert_eq!(to_json("JSONB", Some("{\"a\":1}".into())), json!({"a": 1}));
@@ -280,7 +402,10 @@ mod tests {
 
     #[test]
     fn numeric_keeps_precision_as_string() {
-        assert_eq!(to_json("NUMERIC", Some("12345678901234567890.123456789".into())), json!("12345678901234567890.123456789"));
+        assert_eq!(
+            to_json("NUMERIC", Some("12345678901234567890.123456789".into())),
+            json!("12345678901234567890.123456789")
+        );
         assert_eq!(to_json("DECIMAL", Some("0.10".into())), json!("0.10"));
     }
 

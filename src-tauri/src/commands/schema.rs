@@ -56,7 +56,7 @@ pub async fn get_layout(
     state: State<'_, AppState>,
     view_kind: String,
 ) -> AppResult<Option<serde_json::Value>> {
-    let key = state.session().await?.layout_key();
+    let key = state.layout_key().await?;
     state.storage.get_layout(&key, &view_kind).await
 }
 
@@ -66,13 +66,13 @@ pub async fn save_layout(
     view_kind: String,
     layout: serde_json::Value,
 ) -> AppResult<()> {
-    let key = state.session().await?.layout_key();
+    let key = state.layout_key().await?;
     state.storage.save_layout(&key, &view_kind, &layout).await
 }
 
 #[tauri::command]
 pub async fn clear_layout(state: State<'_, AppState>, view_kind: String) -> AppResult<()> {
-    let key = state.session().await?.layout_key();
+    let key = state.layout_key().await?;
     state.storage.delete_layout(&key, &view_kind).await
 }
 

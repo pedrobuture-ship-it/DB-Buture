@@ -1,10 +1,12 @@
 //! Analysis engines. Everything here is pure: it reads the normalized model only.
 
 pub mod audit;
+pub mod centrality;
 pub mod diff;
 pub mod impact;
 pub mod indexes;
 pub mod lineage;
+pub mod migration;
 pub mod snapshot;
 
 use serde::{Deserialize, Serialize};

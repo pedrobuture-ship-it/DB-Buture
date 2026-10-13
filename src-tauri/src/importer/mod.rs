@@ -30,6 +30,23 @@ pub enum SqlDialect {
 }
 
 impl SqlDialect {
+    pub fn from_engine(e: Engine) -> Self {
+        match e {
+            Engine::Postgres => SqlDialect::Postgres,
+            Engine::Mysql => SqlDialect::Mysql,
+            Engine::Sqlite => SqlDialect::Sqlite,
+            Engine::Generic => SqlDialect::Generic,
+        }
+    }
+
+    pub(crate) fn parser_dialect_pub(self) -> Box<dyn Dialect> {
+        self.parser_dialect()
+    }
+
+    pub fn default_ns(self) -> &'static str {
+        self.default_namespace()
+    }
+
     fn engine(self) -> Engine {
         match self {
             SqlDialect::Postgres => Engine::Postgres,
@@ -117,7 +134,7 @@ struct IndexDraft {
 
 /// Splits a script into statements at top level semicolons (quotes, comments and dollar
 /// quoting are handled by the tokenizer).
-fn split_statements(sql: &str, d: &dyn Dialect) -> Result<Vec<String>, String> {
+pub(crate) fn split_statements(sql: &str, d: &dyn Dialect) -> Result<Vec<String>, String> {
     let tokens = Tokenizer::new(d, sql)
         .tokenize()
         .map_err(|e| e.to_string())?;
@@ -186,6 +203,16 @@ fn action(a: &Option<SqlAction>) -> ReferentialAction {
 }
 
 pub fn import_sql(sql: &str, dialect: SqlDialect) -> ImportResult {
+    import_sql_with_context(sql, dialect, None)
+}
+
+/// Like [`import_sql`], but foreign keys may also point at tables of `known` (used by the
+/// migration simulator, where a new table references existing ones).
+pub fn import_sql_with_context(
+    sql: &str,
+    dialect: SqlDialect,
+    known: Option<&DatabaseSchema>,
+) -> ImportResult {
     let engine = dialect.engine();
     let ns_default = dialect.default_namespace();
     let d = dialect.parser_dialect();
@@ -471,10 +498,26 @@ pub fn import_sql(sql: &str, dialect: SqlDialect) -> ImportResult {
 
     // ---- build the schema ----
     let mut schema = DatabaseSchema::empty(engine, "imported");
-    let table_ids: BTreeMap<(String, String), StableId> = tables
+    let mut table_ids: BTreeMap<(String, String), StableId> = tables
         .iter()
         .map(|(k, t)| (k.clone(), StableId::table(engine, &t.namespace, &t.name)))
         .collect();
+    let mut known_pks: BTreeMap<(String, String), Vec<String>> = BTreeMap::new();
+    if let Some(k) = known {
+        for t in &k.tables {
+            let kk = key(&t.namespace, &t.name);
+            table_ids
+                .entry(kk.clone())
+                .or_insert_with(|| t.stable_id.clone());
+            known_pks.insert(
+                kk,
+                t.primary_key
+                    .as_ref()
+                    .map(|p| p.columns.clone())
+                    .unwrap_or_default(),
+            );
+        }
+    }
 
     for t in tables.values() {
         let tid = StableId::table(engine, &t.namespace, &t.name);
@@ -497,6 +540,7 @@ pub fn import_sql(sql: &str, dialect: SqlDialect) -> ImportResult {
                     .get(&key(&fk.target.0, &fk.target.1))
                     .and_then(|x| x.primary_key.as_ref())
                     .map(|p| p.1.clone())
+                    .or_else(|| known_pks.get(&key(&fk.target.0, &fk.target.1)).cloned())
                     .unwrap_or_default()
             } else {
                 fk.target_columns.clone()

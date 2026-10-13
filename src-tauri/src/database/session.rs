@@ -97,7 +97,8 @@ impl Session {
     }
 
     pub fn set_running(&self, backend: i64) {
-        self.running.store(backend, std::sync::atomic::Ordering::SeqCst);
+        self.running
+            .store(backend, std::sync::atomic::Ordering::SeqCst);
     }
 
     pub fn clear_running(&self) {
@@ -111,8 +112,15 @@ impl Session {
             return;
         }
         let result = match &self.pool {
-            Pool::Postgres(p) => sqlx::query("SELECT pg_cancel_backend($1)").bind(id as i32).execute(p).await.map(|_| ()),
-            Pool::Mysql(p) => sqlx::query(sqlx::AssertSqlSafe(format!("KILL QUERY {}", id as u64))).execute(p).await.map(|_| ()),
+            Pool::Postgres(p) => sqlx::query("SELECT pg_cancel_backend($1)")
+                .bind(id as i32)
+                .execute(p)
+                .await
+                .map(|_| ()),
+            Pool::Mysql(p) => sqlx::query(sqlx::AssertSqlSafe(format!("KILL QUERY {}", id as u64)))
+                .execute(p)
+                .await
+                .map(|_| ()),
             Pool::Sqlite(_) => Ok(()),
         };
         if let Err(e) = result {

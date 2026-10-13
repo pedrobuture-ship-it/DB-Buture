@@ -71,14 +71,21 @@ fn num_of(v: &Value, k: &str) -> Option<f64> {
 // ---------- PostgreSQL ----------
 
 pub fn parse_postgres(json: &str) -> AppResult<QueryPlan> {
-    let v: Value = serde_json::from_str(json).map_err(|e| AppError::Introspection(format!("invalid EXPLAIN JSON: {e}")))?;
+    let v: Value = serde_json::from_str(json)
+        .map_err(|e| AppError::Introspection(format!("invalid EXPLAIN JSON: {e}")))?;
     let plan = v
         .get(0)
         .and_then(|x| x.get("Plan"))
         .ok_or_else(|| AppError::Introspection("EXPLAIN output has no Plan".into()))?;
     let mut c = Counter(0);
     let root = pg_node(plan, &mut c);
-    let mut p = QueryPlan { engine: Engine::Postgres, total_cost: root.estimated_cost, root, observations: vec![], notes: vec![ESTIMATE_NOTE.into()] };
+    let mut p = QueryPlan {
+        engine: Engine::Postgres,
+        total_cost: root.estimated_cost,
+        root,
+        observations: vec![],
+        notes: vec![ESTIMATE_NOTE.into()],
+    };
     observe(&mut p);
     Ok(p)
 }
@@ -90,9 +97,25 @@ fn pg_node(v: &Value, c: &mut Counter) -> PlanNode {
         Some(s) => format!("{s}.{r}"),
         None => r,
     });
-    let filter = str_of(v, "Filter").or_else(|| str_of(v, "Index Cond")).or_else(|| str_of(v, "Hash Cond")).or_else(|| str_of(v, "Join Filter"));
+    let filter = str_of(v, "Filter")
+        .or_else(|| str_of(v, "Index Cond"))
+        .or_else(|| str_of(v, "Hash Cond"))
+        .or_else(|| str_of(v, "Join Filter"));
     let mut details = vec![];
-    for k in ["Join Type", "Scan Direction", "Sort Key", "Group Key", "Parent Relationship", "Strategy", "Alias", "Index Cond", "Recheck Cond", "Hash Cond", "Merge Cond", "Subplan Name"] {
+    for k in [
+        "Join Type",
+        "Scan Direction",
+        "Sort Key",
+        "Group Key",
+        "Parent Relationship",
+        "Strategy",
+        "Alias",
+        "Index Cond",
+        "Recheck Cond",
+        "Hash Cond",
+        "Merge Cond",
+        "Subplan Name",
+    ] {
         if let Some(x) = v.get(k) {
             let text = match x {
                 Value::String(s) => s.clone(),
@@ -101,7 +124,11 @@ fn pg_node(v: &Value, c: &mut Counter) -> PlanNode {
             details.push((k.to_string(), text));
         }
     }
-    let children = v.get("Plans").and_then(|p| p.as_array()).map(|a| a.iter().map(|x| pg_node(x, c)).collect()).unwrap_or_default();
+    let children = v
+        .get("Plans")
+        .and_then(|p| p.as_array())
+        .map(|a| a.iter().map(|x| pg_node(x, c)).collect())
+        .unwrap_or_default();
     PlanNode {
         id,
         node_type: str_of(v, "Node Type").unwrap_or_else(|| "Unknown".into()),
@@ -119,8 +146,11 @@ fn pg_node(v: &Value, c: &mut Counter) -> PlanNode {
 // ---------- MySQL ----------
 
 pub fn parse_mysql(json: &str) -> AppResult<QueryPlan> {
-    let v: Value = serde_json::from_str(json).map_err(|e| AppError::Introspection(format!("invalid EXPLAIN JSON: {e}")))?;
-    let block = v.get("query_block").ok_or_else(|| AppError::Introspection("EXPLAIN output has no query_block".into()))?;
+    let v: Value = serde_json::from_str(json)
+        .map_err(|e| AppError::Introspection(format!("invalid EXPLAIN JSON: {e}")))?;
+    let block = v
+        .get("query_block")
+        .ok_or_else(|| AppError::Introspection("EXPLAIN output has no query_block".into()))?;
     let mut c = Counter(0);
     let mut root = PlanNode {
         id: c.next(),
@@ -128,14 +158,22 @@ pub fn parse_mysql(json: &str) -> AppResult<QueryPlan> {
         relation: None,
         index: None,
         filter: None,
-        estimated_cost: block.get("cost_info").and_then(|ci| num_of(ci, "query_cost")),
+        estimated_cost: block
+            .get("cost_info")
+            .and_then(|ci| num_of(ci, "query_cost")),
         startup_cost: None,
         estimated_rows: None,
         details: vec![],
         children: vec![],
     };
     root.children = mysql_children(block, &mut c);
-    let mut p = QueryPlan { engine: Engine::Mysql, total_cost: root.estimated_cost, root, observations: vec![], notes: vec![ESTIMATE_NOTE.into()] };
+    let mut p = QueryPlan {
+        engine: Engine::Mysql,
+        total_cost: root.estimated_cost,
+        root,
+        observations: vec![],
+        notes: vec![ESTIMATE_NOTE.into()],
+    };
     observe(&mut p);
     Ok(p)
 }
@@ -149,15 +187,38 @@ fn mysql_children(v: &Value, c: &mut Counter) -> Vec<PlanNode> {
             "table" => out.push(mysql_table(val, c)),
             "nested_loop" => {
                 if let Some(items) = val.as_array() {
-                    let mut join = PlanNode { id: c.next(), node_type: "Nested loop".into(), relation: None, index: None, filter: None, estimated_cost: None, startup_cost: None, estimated_rows: None, details: vec![], children: vec![] };
+                    let mut join = PlanNode {
+                        id: c.next(),
+                        node_type: "Nested loop".into(),
+                        relation: None,
+                        index: None,
+                        filter: None,
+                        estimated_cost: None,
+                        startup_cost: None,
+                        estimated_rows: None,
+                        details: vec![],
+                        children: vec![],
+                    };
                     for it in items {
                         join.children.extend(mysql_children(it, c));
                     }
                     out.push(join);
                 }
             }
-            "ordering_operation" | "grouping_operation" | "duplicates_removal" | "buffer_result" | "windowing" => {
-                let mut n = PlanNode { id: c.next(), node_type: key.replace('_', " "), relation: None, index: None, filter: None, estimated_cost: None, startup_cost: None, estimated_rows: None, details: vec![], children: vec![] };
+            "ordering_operation" | "grouping_operation" | "duplicates_removal"
+            | "buffer_result" | "windowing" => {
+                let mut n = PlanNode {
+                    id: c.next(),
+                    node_type: key.replace('_', " "),
+                    relation: None,
+                    index: None,
+                    filter: None,
+                    estimated_cost: None,
+                    startup_cost: None,
+                    estimated_rows: None,
+                    details: vec![],
+                    children: vec![],
+                };
                 for flag in ["using_filesort", "using_temporary_table"] {
                     if val.get(flag).and_then(|f| f.as_bool()) == Some(true) {
                         n.details.push((flag.to_string(), "true".into()));
@@ -167,7 +228,18 @@ fn mysql_children(v: &Value, c: &mut Counter) -> Vec<PlanNode> {
                 out.push(n);
             }
             "union_result" => {
-                let mut n = PlanNode { id: c.next(), node_type: "Union".into(), relation: None, index: None, filter: None, estimated_cost: None, startup_cost: None, estimated_rows: None, details: vec![], children: vec![] };
+                let mut n = PlanNode {
+                    id: c.next(),
+                    node_type: "Union".into(),
+                    relation: None,
+                    index: None,
+                    filter: None,
+                    estimated_cost: None,
+                    startup_cost: None,
+                    estimated_rows: None,
+                    details: vec![],
+                    children: vec![],
+                };
                 if let Some(specs) = val.get("query_specifications").and_then(|s| s.as_array()) {
                     for s in specs {
                         if let Some(b) = s.get("query_block") {
@@ -200,7 +272,7 @@ fn mysql_table(t: &Value, c: &mut Counter) -> PlanNode {
             "index" => "Full index scan".into(),
             "range" => "Index range scan".into(),
             "ref" | "eq_ref" | "const" | "system" | "ref_or_null" => "Index lookup".into(),
-            other if other.is_empty() => "Table".into(),
+            "" => "Table".into(),
             other => format!("Access {other}"),
         },
         relation: str_of(t, "table_name"),
@@ -208,7 +280,8 @@ fn mysql_table(t: &Value, c: &mut Counter) -> PlanNode {
         filter: str_of(t, "attached_condition"),
         estimated_cost: cost.and_then(|ci| num_of(ci, "prefix_cost")),
         startup_cost: None,
-        estimated_rows: num_of(t, "rows_examined_per_scan").or_else(|| num_of(t, "rows_produced_per_join")),
+        estimated_rows: num_of(t, "rows_examined_per_scan")
+            .or_else(|| num_of(t, "rows_produced_per_join")),
         details,
         children: vec![],
     }
@@ -219,10 +292,23 @@ fn mysql_table(t: &Value, c: &mut Counter) -> PlanNode {
 /// `rows` are `(id, parent, detail)` triples from `EXPLAIN QUERY PLAN`.
 pub fn parse_sqlite(rows: &[(i64, i64, String)]) -> AppResult<QueryPlan> {
     if rows.is_empty() {
-        return Err(AppError::Introspection("EXPLAIN QUERY PLAN returned no rows".into()));
+        return Err(AppError::Introspection(
+            "EXPLAIN QUERY PLAN returned no rows".into(),
+        ));
     }
     let mut c = Counter(0);
-    let mut root = PlanNode { id: c.next(), node_type: "Query".into(), relation: None, index: None, filter: None, estimated_cost: None, startup_cost: None, estimated_rows: None, details: vec![], children: vec![] };
+    let mut root = PlanNode {
+        id: c.next(),
+        node_type: "Query".into(),
+        relation: None,
+        index: None,
+        filter: None,
+        estimated_cost: None,
+        startup_cost: None,
+        estimated_rows: None,
+        details: vec![],
+        children: vec![],
+    };
     fn build(parent: i64, rows: &[(i64, i64, String)], c: &mut Counter) -> Vec<PlanNode> {
         rows.iter()
             .filter(|(_, p, _)| *p == parent)
@@ -263,16 +349,26 @@ fn sqlite_node(detail: &str, c: &mut Counter) -> PlanNode {
             Some(i) => (&rest[..i], Some(&rest[i + 7..])),
             None => (rest, None),
         };
-        relation = Some(rel_part.split_whitespace().next().unwrap_or("").to_string()).filter(|s| !s.is_empty());
+        relation = Some(rel_part.split_whitespace().next().unwrap_or("").to_string())
+            .filter(|s| !s.is_empty());
         if let Some(u) = using {
             let u = u.trim();
-            if let Some(idx) = u.strip_prefix("COVERING INDEX ").or_else(|| u.strip_prefix("INDEX ")) {
+            if let Some(idx) = u
+                .strip_prefix("COVERING INDEX ")
+                .or_else(|| u.strip_prefix("INDEX "))
+            {
                 let mut parts = idx.splitn(2, ' ');
                 index = parts.next().map(str::to_string);
-                filter = parts.next().map(|f| f.trim().to_string()).filter(|f| !f.is_empty());
+                filter = parts
+                    .next()
+                    .map(|f| f.trim().to_string())
+                    .filter(|f| !f.is_empty());
             } else if u.starts_with("INTEGER PRIMARY KEY") {
                 index = Some("rowid".into());
-                filter = u.strip_prefix("INTEGER PRIMARY KEY").map(|f| f.trim().to_string()).filter(|f| !f.is_empty());
+                filter = u
+                    .strip_prefix("INTEGER PRIMARY KEY")
+                    .map(|f| f.trim().to_string())
+                    .filter(|f| !f.is_empty());
             }
         }
     }
@@ -282,7 +378,11 @@ fn sqlite_node(detail: &str, c: &mut Counter) -> PlanNode {
     }
     PlanNode {
         id: c.next(),
-        node_type: if up.starts_with("USE TEMP B-TREE") { "Temp b-tree".into() } else { kind.into() },
+        node_type: if up.starts_with("USE TEMP B-TREE") {
+            "Temp b-tree".into()
+        } else {
+            kind.into()
+        },
         relation,
         index,
         filter,
@@ -334,18 +434,28 @@ pub fn observe(plan: &mut QueryPlan) {
             }),
             _ => {}
         }
-        if n.details.iter().any(|(k, v)| (k == "using_filesort" || k == "using_temporary_table") && v == "true") {
+        if n.details
+            .iter()
+            .any(|(k, v)| (k == "using_filesort" || k == "using_temporary_table") && v == "true")
+        {
             obs.push(Observation {
                 node_id: n.id,
                 severity: Severity::Low,
                 evidence: Evidence::Heuristic,
-                message: "MySQL reports a filesort or temporary table here; an index could avoid it.".into(),
+                message:
+                    "MySQL reports a filesort or temporary table here; an index could avoid it."
+                        .into(),
             });
         }
     });
     if let Some(r) = plan.root.estimated_rows {
         if r >= 1_000_000.0 {
-            obs.push(Observation { node_id: plan.root.id, severity: Severity::Low, evidence: Evidence::Heuristic, message: format!("The plan is estimated to return about {} rows.", r as i64) });
+            obs.push(Observation {
+                node_id: plan.root.id,
+                severity: Severity::Low,
+                evidence: Evidence::Heuristic,
+                message: format!("The plan is estimated to return about {} rows.", r as i64),
+            });
         }
     }
     plan.observations = obs;
@@ -391,7 +501,10 @@ mod tests {
         let o = &p.observations[0];
         assert_eq!(o.evidence, Evidence::Heuristic);
         assert!(o.message.contains("shop.orders"));
-        assert!(o.message.contains("might help"), "worded as a possibility, not a certainty");
+        assert!(
+            o.message.contains("might help"),
+            "worded as a possibility, not a certainty"
+        );
         assert!(p.notes[0].contains("no ANALYZE"));
     }
 
@@ -423,8 +536,14 @@ mod tests {
         assert_eq!(join.node_type, "Nested loop");
         assert_eq!(join.children[0].node_type, "Full table scan");
         assert_eq!(join.children[1].index.as_deref(), Some("PRIMARY"));
-        assert!(p.observations.iter().any(|o| o.message.contains("Full scan over orders")));
-        assert!(p.observations.iter().any(|o| o.message.contains("filesort")));
+        assert!(p
+            .observations
+            .iter()
+            .any(|o| o.message.contains("Full scan over orders")));
+        assert!(p
+            .observations
+            .iter()
+            .any(|o| o.message.contains("filesort")));
     }
 
     #[test]
@@ -438,7 +557,11 @@ mod tests {
     #[test]
     fn parses_sqlite_query_plan_tree() {
         let rows = vec![
-            (3, 0, "SEARCH orders USING INDEX idx_orders_user (user_id=?)".to_string()),
+            (
+                3,
+                0,
+                "SEARCH orders USING INDEX idx_orders_user (user_id=?)".to_string(),
+            ),
             (7, 0, "SCAN users".to_string()),
             (9, 7, "USE TEMP B-TREE FOR ORDER BY".to_string()),
         ];
@@ -452,13 +575,17 @@ mod tests {
         let scan = &p.root.children[1];
         assert_eq!(scan.node_type, "Full scan");
         assert_eq!(scan.children[0].node_type, "Temp b-tree");
-        assert!(p.observations.iter().any(|o| o.message.contains("scans all of users")));
+        assert!(p
+            .observations
+            .iter()
+            .any(|o| o.message.contains("scans all of users")));
         assert_eq!(p.total_cost, None);
     }
 
     #[test]
     fn sqlite_primary_key_search() {
-        let p = parse_sqlite(&[(2, 0, "SEARCH t USING INTEGER PRIMARY KEY (rowid=?)".into())]).unwrap();
+        let p =
+            parse_sqlite(&[(2, 0, "SEARCH t USING INTEGER PRIMARY KEY (rowid=?)".into())]).unwrap();
         assert_eq!(p.root.children[0].index.as_deref(), Some("rowid"));
         assert!(parse_sqlite(&[]).is_err());
     }

@@ -1,6 +1,7 @@
 pub mod connections;
 pub mod layouts;
 pub mod migrations;
+pub mod snapshots;
 
 use std::path::Path;
 use std::str::FromStr;

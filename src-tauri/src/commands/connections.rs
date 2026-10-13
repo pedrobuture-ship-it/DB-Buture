@@ -137,24 +137,25 @@ pub async fn connect(state: State<'_, AppState>, input: ConnectInput) -> AppResu
         .or(input.name)
         .unwrap_or_else(|| session.database_name());
 
-    let mut guard = state.active.lock().await;
-    if let Some(old) = guard.take() {
-        old.session.close().await;
-    }
-    *guard = Some(Active {
-        session: std::sync::Arc::new(session),
-        name,
-        connection_id: saved.map(|s| s.id),
-        cache: None,
-    });
-    drop(guard);
+    let layout_key = session.layout_key();
+    state
+        .replace_active(Active {
+            session: Some(std::sync::Arc::new(session)),
+            name,
+            connection_id: saved.map(|s| s.id),
+            cache: None,
+            layout_key,
+        })
+        .await;
     state.info().await.ok_or(AppError::NotConnected)
 }
 
 #[tauri::command]
 pub async fn disconnect(state: State<'_, AppState>) -> AppResult<()> {
     if let Some(old) = state.active.lock().await.take() {
-        old.session.close().await;
+        if let Some(s) = old.session {
+            s.close().await;
+        }
     }
     Ok(())
 }
