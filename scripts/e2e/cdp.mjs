@@ -99,25 +99,32 @@ export async function launchBrowser({ port = 9333, width = 1500, height = 950 } 
     async type(selector, text) {
       await api.eval(`(() => {
         const el = document.querySelector(${JSON.stringify(selector)});
-        if (!el) throw new Error("no element ${selector}");
-        const proto = el.tagName === "SELECT" ? HTMLSelectElement.prototype : HTMLInputElement.prototype;
+        if (!el) throw new Error("no element " + ${JSON.stringify(selector)});
+        const proto = el.tagName === "SELECT" ? HTMLSelectElement.prototype : el.tagName === "TEXTAREA" ? HTMLTextAreaElement.prototype : HTMLInputElement.prototype;
         Object.getOwnPropertyDescriptor(proto, "value").set.call(el, ${JSON.stringify(text)});
         el.dispatchEvent(new Event("input", { bubbles: true }));
         el.dispatchEvent(new Event("change", { bubbles: true }));
       })()`);
     },
     /** Clicks the first element in `scope` whose trimmed text equals `text` (falls back to "includes"). */
+    /** Focuses an element (e.g. a CodeMirror content area) and inserts text like a paste. */
+    async insertText(selector, text) {
+      await api.eval(
+        `(() => { const el = document.querySelector(${JSON.stringify(selector)}); if (!el) throw new Error("no " + ${JSON.stringify(selector)}); el.focus(); })()`,
+      );
+      await send("Input.insertText", { text });
+    },
     async clickText(text, scope = "button") {
       await api.eval(`(() => {
         const all = [...document.querySelectorAll(${JSON.stringify(scope)})];
         const el = all.find((e) => e.textContent.trim() === ${JSON.stringify(text)}) ?? all.find((e) => e.textContent.trim().includes(${JSON.stringify(text)}));
-        if (!el) throw new Error("no ${scope} with text: ${text}");
+        if (!el) throw new Error("no " + ${JSON.stringify(scope)} + " with text: " + ${JSON.stringify(text)});
         el.click();
       })()`);
     },
     async click(selector) {
       await api.eval(
-        `(() => { const el = document.querySelector(${JSON.stringify(selector)}); if (!el) throw new Error("no ${selector}"); el.click(); })()`,
+        `(() => { const el = document.querySelector(${JSON.stringify(selector)}); if (!el) throw new Error("no " + ${JSON.stringify(selector)}); el.click(); })()`,
       );
     },
     async key(key, { ctrl = false } = {}) {

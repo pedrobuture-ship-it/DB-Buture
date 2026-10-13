@@ -283,7 +283,7 @@ pub fn import_sql_with_context(
                         indexes: vec![],
                     };
                     for (ord, c) in ct.columns.iter().enumerate() {
-                        let native = c.data_type.to_string();
+                        let native = c.data_type.to_string().to_lowercase();
                         let mut nullable = true;
                         let mut default = None;
                         let mut generated = None;

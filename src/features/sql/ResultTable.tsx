@@ -41,6 +41,11 @@ export function ResultTable({ result }: { result: QueryResult }) {
               </div>
             ))}
           </div>
+          {result.rows.length === 0 && (
+            <p className="px-3 py-4 font-mono text-[12px] text-fg-dim">
+              The query ran and returned no rows.
+            </p>
+          )}
           <VirtualList
             className="min-h-0 flex-1"
             items={result.rows}

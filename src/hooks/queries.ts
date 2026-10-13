@@ -60,9 +60,11 @@ export function useDisconnect() {
   return useMutation<unknown, AppError>({
     mutationFn: async () => {
       await ipc.disconnect();
-      qc.clear();
+      // Flip the status first so the shell unmounts; only then drop data that belonged to the
+      // closed workspace (removing it earlier would make mounted views refetch and fail).
       qc.setQueryData(keys.status, null);
       useUi.getState().reset();
+      for (const key of ["schema", "analysis", "snapshots"]) qc.removeQueries({ queryKey: [key] });
     },
   });
 }

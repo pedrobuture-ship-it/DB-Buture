@@ -146,6 +146,119 @@ try {
     await b.key("Escape");
   });
 
+  await step("er heatmap + path", async () => {
+    await b.clickText("ER Diagram", "nav button");
+    await b.waitFor(`document.querySelectorAll('.react-flow__node').length > 3`, 15000);
+    await b.type('select[aria-label="Heatmap mode"]', "size");
+    await b.waitFor(`document.body.innerText.toLowerCase().includes("total table size")`);
+    await b.clickText("Path");
+    await b.sleep(300);
+    await b.shot(join(out, "11-erd-heatmap.png"));
+    await b.type('select[aria-label="Heatmap mode"]', "normal");
+  });
+
+  await step("sql editor run", async () => {
+    await b.clickText("SQL Editor", "nav button");
+    await b.waitFor(`document.querySelector('.cm-content')`);
+    await b.insertText(
+      ".cm-content",
+      "SELECT u.id, u.email, count(o.id) AS orders FROM shop.users u LEFT JOIN shop.orders o ON o.user_id = u.id GROUP BY u.id, u.email",
+    );
+    await b.key("Enter", { ctrl: true });
+    await b.waitFor(
+      `document.body.innerText.includes("rows") && document.body.innerText.includes("ms")`,
+    );
+    await b.shot(join(out, "12-sql-results.png"));
+  });
+
+  await step("sql editor blocks writes", async () => {
+    await b.eval(`document.querySelector('.cm-content').focus()`);
+    await b.key("a", { ctrl: true });
+    await b.insertText(".cm-content", "DELETE FROM shop.users");
+    await b.key("Enter", { ctrl: true });
+    await b.waitFor(
+      `document.body.innerText.includes("read-only") || document.body.innerText.includes("blocked")`,
+    );
+    await b.shot(join(out, "13-sql-blocked.png"));
+  });
+
+  await step("explain", async () => {
+    await b.eval(`document.querySelector('.cm-content').focus()`);
+    await b.key("a", { ctrl: true });
+    await b.insertText(
+      ".cm-content",
+      "SELECT * FROM shop.orders o JOIN shop.users u ON u.id = o.user_id WHERE o.total > 5",
+    );
+    await b.clickText("Explain");
+    await b.waitFor(`document.querySelectorAll('[data-testid=plan-node]').length >= 2`);
+    await b.shot(join(out, "14-explain.png"));
+  });
+
+  await step("snapshot + identical diff", async () => {
+    await b.clickText("Snapshots", "nav button");
+    await b.waitFor(`document.body.innerText.includes("SNAPSHOTS")`);
+    await b.type('input[aria-label="Snapshot name"]', "baseline");
+    await b.clickText("Take snapshot of loaded metadata");
+    await b.waitFor(`document.body.innerText.includes("baseline")`);
+    await b.shot(join(out, "15-snapshots.png"));
+    await b.clickText("Compare");
+    await b.waitFor(`document.body.innerText.includes("IDENTICAL STRUCTURE")`);
+    await b.shot(join(out, "16-diff-identical.png"));
+  });
+
+  await step("migration simulator", async () => {
+    await b.clickText("Migration simulator", "button");
+    await b.type(
+      'textarea[aria-label="Migration DDL"]',
+      "ALTER TABLE shop.users ADD COLUMN nickname text;\nDROP TABLE shop.users;\nALTER TABLE shop.orders ALTER COLUMN total TYPE numeric(14,2);",
+    );
+    await b.clickText("Simulate on a copy of the model");
+    await b.waitFor(
+      `document.body.innerText.toLowerCase().includes("application risk") && document.body.innerText.toLowerCase().includes("failed")`,
+    );
+    await b.shot(join(out, "17-migration.png"));
+  });
+
+  await step("lineage", async () => {
+    await b.clickText("Data Lineage", "nav button");
+    await b.waitFor(
+      `document.body.innerText.toLowerCase().includes("column lineage") && document.body.innerText.includes("AGGREGATED")`,
+    );
+    await b.shot(join(out, "18-lineage.png"));
+  });
+
+  await step("query plans / raw / settings", async () => {
+    await b.clickText("Query Plans", "nav button");
+    await b.waitFor(`document.body.innerText.includes("EXPLAIN only")`);
+    await b.clickText("Raw Metadata", "nav button");
+    await b.waitFor(`document.body.innerText.includes("RAW METADATA")`);
+    await b.clickText("Settings", "nav button");
+    await b.waitFor(`document.body.innerText.includes("Copyright © Pedro Buture")`);
+    await b.shot(join(out, "19-settings.png"));
+  });
+
+  await step("import sql offline workspace", async () => {
+    await b.clickText("Disconnect");
+    await b.waitFor(`document.body.innerText.includes("CONNECT DATABASE")`);
+    await b.clickText("Import SQL");
+    await b.waitFor(`document.body.innerText.includes("IMPORT SQL")`);
+    await b.type(
+      'textarea[aria-label="SQL script"]',
+      "CREATE TABLE a (id int PRIMARY KEY);\nCREATE TABLE b (id int PRIMARY KEY, a_id int REFERENCES a(id));\nINSERT INTO a VALUES (1);",
+    );
+    await b.clickText("Parse");
+    await b.waitFor(`document.body.innerText.includes("PARSED WITH WARNINGS")`);
+    await b.shot(join(out, "20-import.png"));
+    await b.clickText("Open schema");
+    await b.waitFor(`document.body.innerText.includes("DATABASE OVERVIEW")`);
+    await b.clickText("SQL Editor", "nav button");
+    await b.waitFor(`document.body.innerText.toLowerCase().includes("live connection required")`);
+    await b.clickText("ER Diagram", "nav button");
+    await b.waitFor(`document.querySelectorAll('.react-flow__node').length === 2`, 15000);
+    await b.sleep(600);
+    await b.shot(join(out, "21-imported-erd.png"));
+  });
+
   console.log(b.logs.length ? `browser logs:\n${b.logs.join("\n")}` : "no browser errors");
 } finally {
   b.close();

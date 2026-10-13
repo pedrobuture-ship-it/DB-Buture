@@ -38,15 +38,23 @@ function TableNodeImpl({ data, selected }: NodeProps<TableFlowNode>) {
           "flex items-center justify-between border-b px-2",
           selected ? "border-cyan bg-cyan-wash" : "border-line bg-ink-3",
         )}
-        style={{ height: HEADER_H }}
+        style={{
+          height: HEADER_H,
+          ...(data.heat ? { backgroundColor: data.heat.color, color: "#07090c" } : {}),
+        }}
       >
         <span
           className={cx("truncate text-[12px] font-medium", data.heat ? "text-ink-0" : "text-fg")}
         >
           {table.name}
         </span>
-        <span className="ml-2 shrink-0 text-[9px] uppercase tracking-wider text-fg-dim">
-          {table.namespace}
+        <span
+          className={cx(
+            "ml-2 shrink-0 text-[9px] uppercase tracking-wider",
+            data.heat ? "font-semibold text-ink-0" : "text-fg-dim",
+          )}
+        >
+          {data.heat ? data.heat.label : table.namespace}
         </span>
       </div>
       {compact ? (

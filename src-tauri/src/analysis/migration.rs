@@ -598,7 +598,7 @@ fn alter(
                 }
                 return;
             }
-            let native = column_def.data_type.to_string();
+            let native = column_def.data_type.to_string().to_lowercase();
             let not_null = column_def
                 .options
                 .iter()
@@ -839,7 +839,7 @@ fn alter(
                 }
                 AlterColumnOperation::SetDataType { data_type, .. } => {
                     let from = c.native_type.clone();
-                    c.native_type = data_type.to_string();
+                    c.native_type = data_type.to_string().to_lowercase();
                     c.data_type = normalize_type(engine, &c.native_type);
                     push(
                         StatementStatus::Applied,
