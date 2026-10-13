@@ -30,3 +30,7 @@ uuid = { version = "1.28.0", features = ["v4"] }
 chrono = { version = "0.4.45", features = ["serde"] }
 keyring = { version = "3", features = ["sync-secret-service", "apple-native", "windows-native", "crypto-rust"] }
 tauri-plugin-dialog = "2.8.2"
+
+[dev-dependencies]
+tauri = { version = "2", features = ["test"] }
+tiny_http = "0.12"

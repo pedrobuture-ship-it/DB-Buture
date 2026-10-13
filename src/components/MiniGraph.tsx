@@ -148,7 +148,6 @@ function Inner({
       maxZoom={1.6}
       fitView
       colorMode="dark"
-      proOptions={{ hideAttribution: true }}
       nodesConnectable={false}
       onlyRenderVisibleElements
     >

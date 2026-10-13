@@ -313,7 +313,6 @@ function ErdCanvas() {
         minZoom={0.05}
         maxZoom={1.8}
         fitView
-        proOptions={{ hideAttribution: true }}
         colorMode="dark"
         onlyRenderVisibleElements
       >

@@ -51,7 +51,7 @@ function FindingRow({ f }: { f: Finding }) {
     <li className="flex items-center gap-2.5 border-b border-line px-3 py-1.5 last:border-b-0">
       <SeverityBadge severity={f.severity} />
       <EvidenceBadge evidence={f.evidence} />
-      <span className="font-mono text-[10px] text-fg-dim">{f.ruleId}</span>
+      <span className="whitespace-nowrap font-mono text-[10px] text-fg-dim">{f.ruleId}</span>
       <button
         type="button"
         onClick={() => select(f.object, "explorer")}

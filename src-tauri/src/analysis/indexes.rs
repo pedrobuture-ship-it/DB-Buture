@@ -110,7 +110,8 @@ pub fn redundant_indexes(schema: &DatabaseSchema) -> Vec<IndexRedundancy> {
             .collect();
         for (n, a) in idx.iter().enumerate() {
             for (m, b) in idx.iter().enumerate() {
-                if n == m || a.primary {
+                // Covering (INCLUDE) indexes serve index-only scans: never call them redundant.
+                if n == m || a.primary || !a.included_columns.is_empty() {
                     continue;
                 }
                 let same_shape = a.method == b.method && a.predicate == b.predicate;
@@ -357,6 +358,17 @@ mod tests {
             .filter(|x| x.kind == RedundancyKind::Duplicate)
             .count();
         assert_eq!(dup, 1, "each duplicate pair is reported once");
+    }
+
+    #[test]
+    fn covering_indexes_are_not_flagged_as_overlapping() {
+        let mut s = sample();
+        let t = s.tables.iter_mut().find(|t| t.name == "orders").unwrap();
+        let mut cover = idx("orders", "cover", &["x"]);
+        cover.included_columns = vec!["payload".into()];
+        t.indexes.push(cover);
+        t.indexes.push(idx("orders", "wide", &["x", "y"]));
+        assert!(redundant_indexes(&s).is_empty());
     }
 
     #[test]

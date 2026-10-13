@@ -120,7 +120,7 @@ export function DependencyGraph() {
           mode={mode}
           onSelect={(id) => select(id, "explorer")}
         />
-        <div className="absolute bottom-3 left-3 rounded-sm border border-line bg-ink-1/95 px-3 py-1.5">
+        <div className="absolute bottom-3 right-3 rounded-sm border border-line bg-ink-1/95 px-3 py-1.5">
           <EdgeLegend />
         </div>
       </div>

@@ -106,5 +106,27 @@ body {
   --xy-controls-button-border-color-default: var(--color-line);
 }
 .react-flow__attribution {
-  display: none;
+  background: transparent;
+  font-family: var(--font-mono);
+  font-size: 9px;
+  opacity: 0.5;
+}
+.react-flow__attribution a {
+  color: var(--color-fg-dim);
+}
+
+.react-flow__controls-button {
+  background: var(--color-ink-2);
+  color: var(--color-fg-muted);
+  border-bottom: 1px solid var(--color-line);
+}
+.react-flow__controls-button:hover {
+  background: var(--color-ink-4);
+  color: var(--color-cyan);
+}
+.react-flow__controls-button svg {
+  fill: currentColor;
+}
+.react-flow__minimap {
+  background: var(--color-ink-1);
 }

@@ -72,7 +72,7 @@ function TableNodeImpl({ data, selected }: NodeProps<TableFlowNode>) {
               >
                 <span
                   className={cx(
-                    "w-5 shrink-0 text-[9px] font-semibold",
+                    "w-8 shrink-0 whitespace-nowrap text-[9px] font-semibold",
                     markers[0] ? markerColor[markers[0]] : "",
                   )}
                 >

@@ -252,7 +252,7 @@ export function ImpactView() {
                       target={report.data.target}
                       mode="horizontal"
                     />
-                    <div className="absolute bottom-2 left-2 rounded-sm border border-line bg-ink-1/95 px-2 py-1">
+                    <div className="absolute bottom-2 right-2 rounded-sm border border-line bg-ink-1/95 px-2 py-1">
                       <EdgeLegend />
                     </div>
                   </div>

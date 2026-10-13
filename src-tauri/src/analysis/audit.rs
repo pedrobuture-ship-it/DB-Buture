@@ -374,10 +374,10 @@ pub fn points(sev: Severity) -> f64 {
 
 pub fn health(schema: &DatabaseSchema, findings: &[Finding]) -> HealthReport {
     let tables = schema.tables.len();
-    let budget = (tables as f64 * 3.0).max(20.0);
+    let budget = (tables as f64 * 3.0).max(40.0);
     let method = format!(
         "Each finding costs points by severity (high 10, medium 5, low 2, info 0). A category score is \
-         100 minus the share of its penalties against a budget of max(20, 3 x tables) = {budget:.0} points. \
+         100 minus the share of its penalties against a budget of max(40, 3 x tables) = {budget:.0} points. \
          Overall is the mean of the five categories. Heuristic findings are included and labelled."
     );
     let mut by_cat: BTreeMap<Category, Vec<Penalty>> = BTreeMap::new();

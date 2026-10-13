@@ -23,7 +23,7 @@ export function Button({
       type="button"
       {...props}
       className={cx(
-        "inline-flex h-7 items-center justify-center gap-1.5 rounded-sm border px-3 text-[12px] transition-colors disabled:cursor-not-allowed disabled:opacity-40",
+        "inline-flex h-7 shrink-0 items-center justify-center gap-1.5 whitespace-nowrap rounded-sm border px-3 text-[12px] transition-colors disabled:cursor-not-allowed disabled:opacity-40",
         styles[variant],
         className,
       )}
@@ -101,7 +101,7 @@ export function Badge({ children, tone = "neutral" }: { children: ReactNode; ton
   return (
     <span
       className={cx(
-        "inline-flex items-center rounded-sm border px-1.5 py-px font-mono text-[10px] uppercase tracking-wider",
+        "inline-flex items-center whitespace-nowrap rounded-sm border px-1.5 py-px font-mono text-[10px] uppercase tracking-wider",
         tones[tone],
       )}
     >
