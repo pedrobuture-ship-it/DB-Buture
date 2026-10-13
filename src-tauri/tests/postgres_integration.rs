@@ -114,3 +114,35 @@ async fn introspection_is_deterministic_and_system_schemas_optional() {
     assert!(sys.namespaces.iter().any(|n| n.name == "pg_catalog" && n.is_system));
     assert!(sys.tables.len() > a.tables.len());
 }
+
+#[tokio::test]
+async fn session_is_read_only_and_times_out() {
+    use db_buture_lib::database::{ConnectionConfig, Session, SslMode, session::Pool};
+    use db_buture_lib::metadata::Engine;
+    if std::env::var("DB_BUTURE_TEST_PG_URL").is_err() {
+        return;
+    }
+    let cfg = ConnectionConfig {
+        engine: Engine::Postgres,
+        host: Some("127.0.0.1".into()),
+        port: Some(54329),
+        database: Some("buture".into()),
+        username: Some("postgres".into()),
+        ssl_mode: SslMode::Disable,
+        file_path: None,
+    };
+    let probe = Session::probe(&cfg, Some("buture_test")).await.unwrap();
+    assert!(probe.read_only);
+    assert!(probe.server_version.starts_with("17"));
+
+    let session = Session::connect(&cfg, Some("buture_test")).await.unwrap();
+    let Pool::Postgres(p) = &session.pool else { panic!("wrong pool") };
+    let err = sqlx::query("CREATE TABLE shop.should_not_exist (x int)").execute(p).await.unwrap_err();
+    assert!(err.to_string().contains("read-only"), "{err}");
+    let err = sqlx::query("DELETE FROM shop.users").execute(p).await.unwrap_err();
+    assert!(err.to_string().contains("read-only"), "{err}");
+
+    // bad password is reported without echoing it
+    let bad = Session::connect(&cfg, Some("super-secret-wrong")).await.err().unwrap();
+    assert!(!bad.to_string().contains("super-secret-wrong"));
+}
