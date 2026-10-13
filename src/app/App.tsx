@@ -1,5 +1,6 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { EmptyState, ErrorNote } from "@/components/ui";
+import { CommandPalette } from "@/features/palette/CommandPalette";
 import { ConnectScreen } from "@/features/connect/ConnectScreen";
 import { Header } from "@/features/shell/Header";
 import { Sidebar } from "@/features/shell/Sidebar";
@@ -33,6 +34,7 @@ function Root() {
         </main>
         <StatusBar info={status.data} />
       </div>
+      <CommandPalette />
     </div>
   );
 }
