@@ -31,6 +31,8 @@ pub struct Session {
     pub config: ConnectionConfig,
     pub pool: Pool,
     pub server_version: String,
+    /// Backend (PG pid / MySQL connection id) of the statement currently running, for cancellation.
+    running: std::sync::atomic::AtomicI64,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -73,6 +75,7 @@ impl Session {
             config: config.clone(),
             pool,
             server_version,
+            running: std::sync::atomic::AtomicI64::new(0),
         })
     }
 
@@ -91,6 +94,30 @@ impl Session {
         };
         session.close().await;
         Ok(probe)
+    }
+
+    pub fn set_running(&self, backend: i64) {
+        self.running.store(backend, std::sync::atomic::Ordering::SeqCst);
+    }
+
+    pub fn clear_running(&self) {
+        self.running.store(0, std::sync::atomic::Ordering::SeqCst);
+    }
+
+    /// Best-effort server side cancellation of the running statement from a second connection.
+    pub async fn cancel_running(&self) {
+        let id = self.running.swap(0, std::sync::atomic::Ordering::SeqCst);
+        if id == 0 {
+            return;
+        }
+        let result = match &self.pool {
+            Pool::Postgres(p) => sqlx::query("SELECT pg_cancel_backend($1)").bind(id as i32).execute(p).await.map(|_| ()),
+            Pool::Mysql(p) => sqlx::query(sqlx::AssertSqlSafe(format!("KILL QUERY {}", id as u64))).execute(p).await.map(|_| ()),
+            Pool::Sqlite(_) => Ok(()),
+        };
+        if let Err(e) = result {
+            tracing::warn!("could not cancel running statement: {e}");
+        }
     }
 
     pub async fn ping(&self) -> AppResult<u64> {

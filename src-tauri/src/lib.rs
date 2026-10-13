@@ -5,6 +5,8 @@ pub mod error;
 pub mod graph;
 pub mod importer;
 pub mod metadata;
+pub mod plan;
+pub mod query;
 pub mod security;
 pub mod state;
 pub mod storage;
