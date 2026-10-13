@@ -44,6 +44,9 @@ function ErdCanvas() {
   const [userMode, setUserMode] = useState<LayoutMode | null>(null);
   const [layingOut, setLayingOut] = useState(false);
   const [allEdges, setAllEdges] = useState(false);
+  const [hoverId, setHoverId] = useState<StableId | null>(null);
+  // hovering previews the same highlight a selection gives; a selection always wins
+  const focusId = selectedId ?? hoverId;
   const [focus, setFocus] = useState<{ id: StableId; depth: Depth } | null>(null);
   const [focusResult, setFocusResult] = useState<{ key: string; ids: Set<StableId> } | null>(null);
   const [menu, setMenu] = useState<{ id: StableId; x: number; y: number } | null>(null);
@@ -171,14 +174,14 @@ function ErdCanvas() {
   // Highlight the selected table, its FKs and neighbours; dim everything else.
   const related = useMemo(() => {
     const set = new Set<StableId>();
-    if (!selectedId) return set;
-    set.add(selectedId);
+    if (!focusId) return set;
+    set.add(focusId);
     for (const e of erdEdges) {
-      if (e.source === selectedId) set.add(e.target);
-      if (e.target === selectedId) set.add(e.source);
+      if (e.source === focusId) set.add(e.target);
+      if (e.target === focusId) set.add(e.source);
     }
     return set;
-  }, [selectedId, erdEdges]);
+  }, [focusId, erdEdges]);
 
   const heat = useMemo(
     () =>
@@ -209,7 +212,7 @@ function ErdCanvas() {
           dimmed:
             pathNodes.size > 0
               ? !pathNodes.has(n.id)
-              : selectedId != null && related.size > 0 && !related.has(n.id),
+              : focusId != null && related.size > 0 && !related.has(n.id),
           heat: heat.legend
             ? (() => {
                 const h = heat.values.get(n.id);
@@ -244,9 +247,8 @@ function ErdCanvas() {
         const active =
           pathNodes.size > 0
             ? onPath
-            : selectedId != null && (e.source === selectedId || e.target === selectedId);
-        const dim =
-          pathNodes.size > 0 ? !onPath : selectedId != null && related.size > 0 && !active;
+            : focusId != null && (e.source === focusId || e.target === focusId);
+        const dim = pathNodes.size > 0 ? !onPath : focusId != null && related.size > 0 && !active;
         return {
           id: e.id,
           source: e.source,
@@ -273,7 +275,7 @@ function ErdCanvas() {
           zIndex: active ? 10 : 0,
         } satisfies Edge;
       }),
-    [drawnEdges, selectedId, related, compact, pathNodes, pathEdgeKeys],
+    [drawnEdges, focusId, related, compact, pathNodes, pathEdgeKeys],
   );
 
   const onNodesChange = useCallback(
@@ -523,6 +525,8 @@ function ErdCanvas() {
         nodeTypes={nodeTypes}
         onNodesChange={onNodesChange}
         onNodeClick={(_, n) => select(n.id)}
+        onNodeMouseEnter={(_, n) => setHoverId(n.id)}
+        onNodeMouseLeave={() => setHoverId(null)}
         onPaneClick={() => select(null)}
         minZoom={0.05}
         maxZoom={1.8}
