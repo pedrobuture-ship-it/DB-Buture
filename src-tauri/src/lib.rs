@@ -2,6 +2,7 @@ pub mod analysis;
 pub mod commands;
 pub mod database;
 pub mod error;
+pub mod export;
 pub mod graph;
 pub mod importer;
 pub mod metadata;
@@ -56,6 +57,25 @@ pub fn run() {
             commands::analysis::analyze_impact,
             commands::analysis::run_audit,
             commands::analysis::index_analysis,
+            commands::sql::import_sql,
+            commands::sql::open_import,
+            commands::sql::run_query,
+            commands::sql::cancel_query,
+            commands::sql::explain_query,
+            commands::sql::capabilities,
+            commands::versioning::create_snapshot,
+            commands::versioning::list_snapshots,
+            commands::versioning::rename_snapshot,
+            commands::versioning::delete_snapshot,
+            commands::versioning::get_snapshot,
+            commands::versioning::export_snapshot,
+            commands::versioning::diff_versions,
+            commands::versioning::compare_environment,
+            commands::versioning::simulate_migration,
+            commands::versioning::table_centrality,
+            commands::versioning::view_lineage,
+            commands::versioning::export_schema,
+            commands::versioning::save_export,
         ])
         .run(tauri::generate_context!())
         .expect("error while running DB-BUTURE");

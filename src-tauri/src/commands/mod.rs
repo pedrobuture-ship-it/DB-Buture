@@ -1,6 +1,8 @@
 pub mod analysis;
 pub mod connections;
 pub mod schema;
+pub mod sql;
+pub mod versioning;
 
 use serde::Serialize;
 

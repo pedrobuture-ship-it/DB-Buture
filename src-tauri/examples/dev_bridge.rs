@@ -8,7 +8,7 @@
 
 use std::sync::Arc;
 
-use db_buture_lib::commands::{self, analysis, connections, schema};
+use db_buture_lib::commands::{self, analysis, connections, schema, sql, versioning};
 use db_buture_lib::error::AppError;
 use db_buture_lib::security::MemoryStore;
 use db_buture_lib::state::AppState;
@@ -67,6 +67,46 @@ async fn dispatch(
         "analyze_impact" => ok(analysis::analyze_impact(st(), arg(&a, "objectId")?).await),
         "run_audit" => ok(analysis::run_audit(st()).await),
         "index_analysis" => ok(analysis::index_analysis(st()).await),
+        "import_sql" => ok(sql::import_sql(arg(&a, "sql")?, arg(&a, "dialect")?)),
+        "open_import" => {
+            ok(
+                sql::open_import(st(), arg(&a, "sql")?, arg(&a, "dialect")?, arg(&a, "name")?)
+                    .await,
+            )
+        }
+        "run_query" => ok(sql::run_query(
+            st(),
+            arg(&a, "id")?,
+            arg(&a, "sql")?,
+            arg(&a, "limit")?,
+            arg(&a, "timeoutMs")?,
+        )
+        .await),
+        "cancel_query" => ok(sql::cancel_query(st(), arg(&a, "id")?).await),
+        "explain_query" => ok(sql::explain_query(st(), arg(&a, "sql")?).await),
+        "capabilities" => ok(sql::capabilities(st()).await),
+        "create_snapshot" => ok(versioning::create_snapshot(st(), arg(&a, "name")?).await),
+        "list_snapshots" => ok(versioning::list_snapshots(st()).await),
+        "rename_snapshot" => {
+            ok(versioning::rename_snapshot(st(), arg(&a, "id")?, arg(&a, "name")?).await)
+        }
+        "delete_snapshot" => ok(versioning::delete_snapshot(st(), arg(&a, "id")?).await),
+        "get_snapshot" => ok(versioning::get_snapshot(st(), arg(&a, "id")?).await),
+        "export_snapshot" => ok(versioning::export_snapshot(st(), arg(&a, "id")?).await),
+        "diff_versions" => {
+            ok(versioning::diff_versions(st(), arg(&a, "before")?, arg(&a, "after")?).await)
+        }
+        "compare_environment" => ok(versioning::compare_environment(st(), arg(&a, "input")?).await),
+        "simulate_migration" => ok(versioning::simulate_migration(st(), arg(&a, "ddl")?).await),
+        "table_centrality" => ok(versioning::table_centrality(st()).await),
+        "view_lineage" => ok(versioning::view_lineage(st(), arg(&a, "viewId")?).await),
+        "export_schema" => ok(versioning::export_schema(st(), arg(&a, "format")?).await),
+        "save_export" => {
+            ok(
+                versioning::save_export(arg(&a, "path")?, arg(&a, "content")?, arg(&a, "base64")?)
+                    .await,
+            )
+        }
         other => Err(AppError::Validation(format!(
             "dev bridge: unknown command `{other}`"
         ))),
