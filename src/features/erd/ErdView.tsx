@@ -11,12 +11,16 @@ import {
   type NodeChange,
 } from "@xyflow/react";
 import "@xyflow/react/dist/style.css";
-import { LayoutGrid, Radar, Crosshair, ListTree, X } from "lucide-react";
+import { save } from "@tauri-apps/plugin-dialog";
+import { Crosshair, Download, LayoutGrid, ListTree, Radar, Route, X } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Button, EmptyState, ErrorNote, Label, cx } from "@/components/ui";
+import { useAudit } from "@/features/health/HealthView";
 import { useSchema } from "@/hooks/queries";
 import { buildErdEdges, nodeHeight, NODE_WIDTH } from "@/lib/erd";
-import { ipc, type SavedLayout } from "@/lib/ipc";
+import { buildErdSvg, svgToPngBase64 } from "@/lib/erdSvg";
+import { HEAT_LABELS, computeHeat, heatColor, type HeatMode } from "@/lib/heatmap";
+import { ipc, toAppError, type SavedLayout } from "@/lib/ipc";
 import { autoLayout, LAYOUT_LABELS, type LayoutMode } from "@/lib/layout";
 import { useUi } from "@/stores/ui";
 import type { AppError, StableId } from "@/types/schema";
@@ -40,6 +44,15 @@ function ErdCanvas() {
   const [focusResult, setFocusResult] = useState<{ key: string; ids: Set<StableId> } | null>(null);
   const [menu, setMenu] = useState<{ id: StableId; x: number; y: number } | null>(null);
   const [layoutError, setLayoutError] = useState<AppError | null>(null);
+  const [heatMode, setHeatMode] = useState<HeatMode>("normal");
+  const [pathOpen, setPathOpen] = useState(false);
+  const [pathFrom, setPathFrom] = useState("");
+  const [pathTo, setPathTo] = useState("");
+  const [path, setPath] = useState<{
+    shortest: StableId[] | null;
+    alternatives: StableId[][];
+  } | null>(null);
+  const audit = useAudit(heatMode === "risk");
   const positions = useRef<SavedLayout>({ positions: {}, manual: false });
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -132,6 +145,7 @@ function ErdCanvas() {
             compact,
             highlighted: false,
             dimmed: false,
+            heat: null,
             onContext: (id, x, y) => setMenu({ id, x, y }),
           },
         })),
@@ -157,6 +171,24 @@ function ErdCanvas() {
     return set;
   }, [selectedId, erdEdges]);
 
+  const heat = useMemo(
+    () =>
+      schema
+        ? computeHeat(schema, heatMode, audit.data?.findings ?? [])
+        : { values: new Map(), legend: null },
+    [schema, heatMode, audit.data],
+  );
+  const pathNodes = useMemo(() => new Set(path?.shortest ?? []), [path]);
+  const pathEdgeKeys = useMemo(() => {
+    const keys = new Set<string>();
+    const ids = path?.shortest ?? [];
+    for (let i = 0; i + 1 < ids.length; i++) {
+      keys.add(`${ids[i]}|${ids[i + 1]}`);
+      keys.add(`${ids[i + 1]}|${ids[i]}`);
+    }
+    return keys;
+  }, [path]);
+
   const shownNodes = useMemo(
     () =>
       nodes.map((n) => ({
@@ -164,18 +196,32 @@ function ErdCanvas() {
         selected: n.id === selectedId,
         data: {
           ...n.data,
-          highlighted: related.has(n.id),
-          dimmed: selectedId != null && related.size > 0 && !related.has(n.id),
+          highlighted: pathNodes.size > 0 ? pathNodes.has(n.id) : related.has(n.id),
+          dimmed:
+            pathNodes.size > 0
+              ? !pathNodes.has(n.id)
+              : selectedId != null && related.size > 0 && !related.has(n.id),
+          heat: heat.legend
+            ? (() => {
+                const h = heat.values.get(n.id);
+                return h ? { color: heatColor(h.t), label: h.label } : null;
+              })()
+            : null,
         },
       })),
-    [nodes, related, selectedId],
+    [nodes, related, selectedId, heat, pathNodes],
   );
 
   const edges: Edge[] = useMemo(
     () =>
       erdEdges.map((e) => {
-        const active = selectedId != null && (e.source === selectedId || e.target === selectedId);
-        const dim = selectedId != null && related.size > 0 && !active;
+        const onPath = pathEdgeKeys.has(`${e.source}|${e.target}`);
+        const active =
+          pathNodes.size > 0
+            ? onPath
+            : selectedId != null && (e.source === selectedId || e.target === selectedId);
+        const dim =
+          pathNodes.size > 0 ? !onPath : selectedId != null && related.size > 0 && !active;
         return {
           id: e.id,
           source: e.source,
@@ -202,7 +248,7 @@ function ErdCanvas() {
           zIndex: active ? 10 : 0,
         } satisfies Edge;
       }),
-    [erdEdges, selectedId, related, compact],
+    [erdEdges, selectedId, related, compact, pathNodes, pathEdgeKeys],
   );
 
   const onNodesChange = useCallback(
@@ -225,6 +271,37 @@ function ErdCanvas() {
     },
     [persist],
   );
+
+  const names = useMemo(
+    () => new Map((schema?.tables ?? []).map((t) => [t.stableId, t.name])),
+    [schema],
+  );
+
+  const findPath = async () => {
+    setLayoutError(null);
+    try {
+      setPath(await ipc.findPath(pathFrom, pathTo));
+    } catch (e) {
+      setLayoutError(toAppError(e));
+    }
+  };
+
+  const exportDiagram = async (kind: "svg" | "png") => {
+    if (!schema) return;
+    setLayoutError(null);
+    try {
+      const svg = buildErdSvg(schema, positions.current.positions);
+      const target = await save({
+        defaultPath: `er-diagram.${kind}`,
+        filters: [{ name: kind.toUpperCase(), extensions: [kind] }],
+      });
+      if (!target) return;
+      if (kind === "svg") await ipc.saveExport(target, svg);
+      else await ipc.saveExport(target, await svgToPngBase64(svg), true);
+    } catch (e) {
+      setLayoutError(toAppError(e));
+    }
+  };
 
   if (isLoading) return <EmptyState title="Reading catalog…" />;
   if (error)
@@ -298,6 +375,102 @@ function ErdCanvas() {
           </Button>
         )}
       </div>
+      <div className="absolute left-3 top-[58px] z-10 flex flex-wrap items-center gap-2 rounded-md border border-line bg-ink-1/95 p-1.5">
+        <Label className="px-1">HEATMAP</Label>
+        <select
+          aria-label="Heatmap mode"
+          value={heatMode}
+          onChange={(e) => setHeatMode(e.target.value as HeatMode)}
+          className="h-7 rounded-sm border border-line-strong bg-ink-2 px-1.5 font-mono text-[11px]"
+        >
+          {(Object.keys(HEAT_LABELS) as HeatMode[]).map((m) => (
+            <option key={m} value={m}>
+              {HEAT_LABELS[m]}
+            </option>
+          ))}
+        </select>
+        <span className="mx-1 h-5 w-px bg-line" />
+        <Button onClick={() => setPathOpen((v) => !v)} aria-pressed={pathOpen}>
+          <Route size={13} /> Path
+        </Button>
+        <Button onClick={() => void exportDiagram("svg")}>
+          <Download size={13} /> SVG
+        </Button>
+        <Button onClick={() => void exportDiagram("png")}>
+          <Download size={13} /> PNG
+        </Button>
+      </div>
+      {pathOpen && (
+        <div className="absolute left-3 top-[106px] z-10 w-[420px] space-y-2 rounded-md border border-line bg-ink-1/95 p-2.5">
+          <div className="flex items-center gap-2">
+            {[
+              { v: pathFrom, set: setPathFrom, label: "From table" },
+              { v: pathTo, set: setPathTo, label: "To table" },
+            ].map((f) => (
+              <select
+                key={f.label}
+                aria-label={f.label}
+                value={f.v}
+                onChange={(e) => f.set(e.target.value)}
+                className="h-7 min-w-0 flex-1 rounded-sm border border-line-strong bg-ink-2 px-1.5 font-mono text-[11px]"
+              >
+                <option value="">{f.label}…</option>
+                {schema.tables.map((t) => (
+                  <option key={t.stableId} value={t.stableId}>
+                    {t.namespace}.{t.name}
+                  </option>
+                ))}
+              </select>
+            ))}
+            <Button
+              variant="primary"
+              disabled={!pathFrom || !pathTo}
+              onClick={() => void findPath()}
+            >
+              Find
+            </Button>
+            <Button variant="ghost" aria-label="Clear path" onClick={() => setPath(null)}>
+              <X size={13} />
+            </Button>
+          </div>
+          {path && (
+            <div className="font-mono text-[11px]">
+              {path.shortest ? (
+                <>
+                  <div className="text-cyan">shortest · {path.shortest.length - 1} hop(s)</div>
+                  <div className="text-fg-muted">
+                    {path.shortest.map((id) => names.get(id) ?? id).join(" → ")}
+                  </div>
+                  {path.alternatives.length > 1 && (
+                    <div className="mt-1 text-fg-dim">
+                      {path.alternatives.length - 1} alternative route(s) of up to 8 hops
+                    </div>
+                  )}
+                </>
+              ) : (
+                <div className="text-amber">No relationship path connects these tables.</div>
+              )}
+            </div>
+          )}
+        </div>
+      )}
+      {heat.legend && (
+        <div className="absolute bottom-3 left-14 z-10 w-72 rounded-md border border-line bg-ink-1/95 p-2.5">
+          <Label>{heat.legend.title}</Label>
+          <div
+            className="mt-1.5 h-2 rounded-sm"
+            style={{
+              background: `linear-gradient(to right, ${heatColor(0)}, ${heatColor(0.5)}, ${heatColor(1)})`,
+            }}
+            aria-hidden
+          />
+          <div className="mt-1 flex justify-between font-mono text-[10px] text-fg-muted">
+            <span>{heat.legend.min}</span>
+            <span>{heat.legend.max}</span>
+          </div>
+          <p className="mt-1 text-[10px] text-fg-dim">{heat.legend.note}</p>
+        </div>
+      )}
       {layoutError && (
         <div className="absolute right-3 top-3 z-10 w-80">
           <ErrorNote error={layoutError} />

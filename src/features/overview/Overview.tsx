@@ -1,5 +1,8 @@
 import { Activity, GitFork, Network } from "lucide-react";
+import { useQuery } from "@tanstack/react-query";
 import { Badge, Button, EmptyState, ErrorNote, Label, Mono, Panel, Stat } from "@/components/ui";
+import { ipc } from "@/lib/ipc";
+import type { TableCentrality } from "@/types/schema";
 import { useSchema } from "@/hooks/queries";
 import { engineLabel, formatBytes, formatCount } from "@/lib/format";
 import { useUi } from "@/stores/ui";
@@ -29,6 +32,11 @@ export function Overview() {
   const { data, error, isLoading } = useSchema();
   const select = useUi((s) => s.select);
   const setView = useUi((s) => s.setView);
+  const hotspots = useQuery<TableCentrality[]>({
+    queryKey: ["analysis", "centrality", data?.fetchedAt],
+    queryFn: ipc.tableCentrality,
+    enabled: !!data,
+  });
 
   if (isLoading) return <EmptyState title="Reading catalog…" />;
   if (error)
@@ -140,6 +148,42 @@ export function Overview() {
           </div>
         </Panel>
       </div>
+
+      <Panel title="architecture hotspots">
+        {!hotspots.data || hotspots.data.filter((h) => h.role !== "isolated").length === 0 ? (
+          <p className="p-4 text-[12px] text-fg-dim">
+            No foreign keys connect these tables, so no structural hotspots can be identified.
+          </p>
+        ) : (
+          <ul>
+            {hotspots.data
+              .filter((h) => h.role === "hub" || h.role === "bridge")
+              .slice(0, 5)
+              .map((h) => (
+                <li
+                  key={h.table}
+                  className="flex items-center gap-3 border-b border-line px-3 py-2 last:border-b-0"
+                >
+                  <Badge tone={h.role === "hub" ? "amber" : "cyan"}>{h.role}</Badge>
+                  <button
+                    type="button"
+                    className="font-mono text-[12px] text-cyan hover:underline"
+                    onClick={() => select(h.table, "explorer")}
+                  >
+                    {h.name}
+                  </button>
+                  <span className="truncate text-[11px] text-fg-muted">{h.explanation}</span>
+                </li>
+              ))}
+            {hotspots.data.every((h) => h.role !== "hub" && h.role !== "bridge") && (
+              <li className="px-3 py-3 text-[12px] text-fg-dim">
+                No table stands out structurally: nothing is referenced by many tables and no table
+                bridges separate groups.
+              </li>
+            )}
+          </ul>
+        )}
+      </Panel>
 
       <div className="flex gap-2">
         <Button onClick={() => setView("erd")}>

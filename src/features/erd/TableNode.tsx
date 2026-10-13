@@ -40,7 +40,11 @@ function TableNodeImpl({ data, selected }: NodeProps<TableFlowNode>) {
         )}
         style={{ height: HEADER_H }}
       >
-        <span className="truncate text-[12px] font-medium text-fg">{table.name}</span>
+        <span
+          className={cx("truncate text-[12px] font-medium", data.heat ? "text-ink-0" : "text-fg")}
+        >
+          {table.name}
+        </span>
         <span className="ml-2 shrink-0 text-[9px] uppercase tracking-wider text-fg-dim">
           {table.namespace}
         </span>

@@ -7,6 +7,12 @@ import { IndexAnalysis } from "@/features/health/IndexAnalysis";
 import { ImpactView } from "@/features/impact/ImpactView";
 import { QueryPlans } from "@/features/sql/QueryPlans";
 import { SqlEditorView } from "@/features/sql/SqlEditorView";
+import { LineageView } from "@/features/lineage/LineageView";
+import { RawMetadata } from "@/features/settings/RawMetadata";
+import { Settings } from "@/features/settings/Settings";
+import { Environments } from "@/features/versioning/Environments";
+import { SchemaDiffView } from "@/features/versioning/SchemaDiffView";
+import { Snapshots } from "@/features/versioning/Snapshots";
 import { Overview } from "@/features/overview/Overview";
 import { Placeholder } from "@/features/shell/Placeholder";
 import { useUi } from "@/stores/ui";
@@ -38,6 +44,18 @@ export function ViewRouter() {
       return <SqlEditorView />;
     case "plans":
       return <QueryPlans />;
+    case "lineage":
+      return <LineageView />;
+    case "snapshots":
+      return <Snapshots />;
+    case "diff":
+      return <SchemaDiffView />;
+    case "environments":
+      return <Environments />;
+    case "raw":
+      return <RawMetadata />;
+    case "settings":
+      return <Settings />;
     default:
       return <Placeholder view={view} />;
   }

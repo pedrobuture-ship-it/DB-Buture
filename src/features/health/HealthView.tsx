@@ -36,12 +36,12 @@ function barColor(score: number): string {
   return "bg-red";
 }
 
-export function useAudit() {
+export function useAudit(enabled = true) {
   const schema = useSchema();
   return useQuery<AuditReport, AppError>({
     queryKey: ["analysis", "audit", schema.data?.fetchedAt],
     queryFn: ipc.runAudit,
-    enabled: !!schema.data,
+    enabled: enabled && !!schema.data,
   });
 }
 

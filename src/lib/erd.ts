@@ -11,6 +11,8 @@ export interface ErdNodeData extends Record<string, unknown> {
   compact: boolean;
   highlighted: boolean;
   dimmed: boolean;
+  /** Heatmap tint; null when the heatmap is off. */
+  heat: { color: string; label: string } | null;
   onContext?: (id: StableId, x: number, y: number) => void;
 }
 
