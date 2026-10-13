@@ -24,7 +24,9 @@ pub fn normalize_type(engine: Engine, native: &str) -> String {
         (_, "float8" | "double precision" | "double") => "double",
         (_, "timestamp without time zone" | "timestamp" | "datetime") => "timestamp",
         (_, "timestamp with time zone" | "timestamptz") => "timestamptz",
-        (_, "bytea" | "blob" | "longblob" | "mediumblob" | "tinyblob" | "varbinary" | "binary") => "binary",
+        (_, "bytea" | "blob" | "longblob" | "mediumblob" | "tinyblob" | "varbinary" | "binary") => {
+            "binary"
+        }
         (_, "json" | "jsonb") => base,
         (_, "uuid") => "uuid",
         (_, "date") => "date",
@@ -44,9 +46,15 @@ mod tests {
 
     #[test]
     fn postgres_types() {
-        assert_eq!(normalize_type(Engine::Postgres, "character varying(255)"), "varchar");
+        assert_eq!(
+            normalize_type(Engine::Postgres, "character varying(255)"),
+            "varchar"
+        );
         assert_eq!(normalize_type(Engine::Postgres, "integer"), "integer");
-        assert_eq!(normalize_type(Engine::Postgres, "timestamp with time zone"), "timestamptz");
+        assert_eq!(
+            normalize_type(Engine::Postgres, "timestamp with time zone"),
+            "timestamptz"
+        );
         assert_eq!(normalize_type(Engine::Postgres, "numeric(10,2)"), "numeric");
         assert_eq!(normalize_type(Engine::Postgres, "text[]"), "text[]");
     }
@@ -60,7 +68,10 @@ mod tests {
 
     #[test]
     fn unknown_types_are_preserved() {
-        assert_eq!(normalize_type(Engine::Postgres, "geometry(Point,4326)"), "geometry");
+        assert_eq!(
+            normalize_type(Engine::Postgres, "geometry(Point,4326)"),
+            "geometry"
+        );
         assert_eq!(normalize_type(Engine::Postgres, "citext"), "citext");
     }
 }

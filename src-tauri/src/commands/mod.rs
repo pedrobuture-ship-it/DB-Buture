@@ -10,7 +10,11 @@ pub struct AppInfo {
 
 #[tauri::command]
 pub fn app_info() -> AppInfo {
-    AppInfo { name: "DB-BUTURE", version: env!("CARGO_PKG_VERSION"), read_only: true }
+    AppInfo {
+        name: "DB-BUTURE",
+        version: env!("CARGO_PKG_VERSION"),
+        read_only: true,
+    }
 }
 
 #[cfg(test)]

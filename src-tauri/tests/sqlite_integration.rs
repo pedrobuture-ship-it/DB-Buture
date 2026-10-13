@@ -40,7 +40,11 @@ async fn fixture() -> sqlx::SqlitePool {
     std::fs::create_dir_all(&dir).unwrap();
     let path = dir.join("fixture.db");
     let w = SqlitePoolOptions::new()
-        .connect_with(SqliteConnectOptions::new().filename(&path).create_if_missing(true))
+        .connect_with(
+            SqliteConnectOptions::new()
+                .filename(&path)
+                .create_if_missing(true),
+        )
         .await
         .unwrap();
     sqlx::raw_sql(FIXTURE).execute(&w).await.unwrap();
@@ -62,14 +66,34 @@ async fn introspects_sqlite_file() {
     assert_eq!(users.primary_key.as_ref().unwrap().columns, ["id"]);
     assert_eq!(users.unique_constraints.len(), 1);
     assert_eq!(users.unique_constraints[0].columns, ["email"]);
-    assert_eq!(users.columns.iter().find(|c| c.name == "name").unwrap().data_type, "varchar");
-    assert_eq!(users.columns.iter().find(|c| c.name == "full_name").unwrap().generated.as_deref(), Some("stored"));
+    assert_eq!(
+        users
+            .columns
+            .iter()
+            .find(|c| c.name == "name")
+            .unwrap()
+            .data_type,
+        "varchar"
+    );
+    assert_eq!(
+        users
+            .columns
+            .iter()
+            .find(|c| c.name == "full_name")
+            .unwrap()
+            .generated
+            .as_deref(),
+        Some("stored")
+    );
 
     let orders = s.tables.iter().find(|t| t.name == "orders").unwrap();
     assert_eq!(orders.foreign_keys[0].on_delete, ReferentialAction::Cascade);
 
     let items = s.tables.iter().find(|t| t.name == "order_items").unwrap();
-    assert_eq!(items.primary_key.as_ref().unwrap().columns, ["order_id", "line"]);
+    assert_eq!(
+        items.primary_key.as_ref().unwrap().columns,
+        ["order_id", "line"]
+    );
     // implicit target (REFERENCES orders) resolves to orders' primary key
     assert_eq!(items.foreign_keys[0].target_columns, ["id"]);
 
@@ -77,9 +101,17 @@ async fn introspects_sqlite_file() {
     assert_eq!(notes.foreign_keys[0].source_columns, ["order_id", "line"]);
     assert_eq!(notes.foreign_keys[0].target_columns, ["order_id", "line"]);
 
-    let partial = users.indexes.iter().find(|i| i.name == "idx_users_name_partial").unwrap();
+    let partial = users
+        .indexes
+        .iter()
+        .find(|i| i.name == "idx_users_name_partial")
+        .unwrap();
     assert_eq!(partial.predicate.as_deref(), Some("name IS NOT NULL"));
-    let expr = users.indexes.iter().find(|i| i.name == "idx_users_lower").unwrap();
+    let expr = users
+        .indexes
+        .iter()
+        .find(|i| i.name == "idx_users_lower")
+        .unwrap();
     assert!(expr.columns.is_empty());
     assert_eq!(expr.engine_specific_metadata["hasExpression"], true);
 }
@@ -93,7 +125,11 @@ async fn views_triggers_and_dependencies() {
     assert_eq!(s.triggers[0].timing, "AFTER");
     assert_eq!(s.triggers[0].events, ["INSERT"]);
     let dep = |from: &str, to: &str| {
-        s.dependencies.iter().any(|d| d.kind == DependencyKind::DependsOn && d.from.as_str().ends_with(from) && d.to.as_str().ends_with(to))
+        s.dependencies.iter().any(|d| {
+            d.kind == DependencyKind::DependsOn
+                && d.from.as_str().ends_with(from)
+                && d.to.as_str().ends_with(to)
+        })
     };
     assert!(dep("view:main.user_totals", "main.users"));
     assert!(dep("view:main.user_totals", "main.orders"));
@@ -103,7 +139,9 @@ async fn views_triggers_and_dependencies() {
 #[tokio::test]
 async fn read_only_connection_rejects_writes() {
     let pool = fixture().await;
-    let err = sqlx::query("CREATE TABLE nope (x INT)").execute(&pool).await;
+    let err = sqlx::query("CREATE TABLE nope (x INT)")
+        .execute(&pool)
+        .await;
     assert!(err.is_err());
     let err = sqlx::query("DELETE FROM users").execute(&pool).await;
     assert!(err.is_err());

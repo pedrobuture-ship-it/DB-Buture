@@ -21,7 +21,9 @@ impl Storage {
         if let Some(parent) = path.parent() {
             std::fs::create_dir_all(parent).map_err(|e| AppError::Storage(e.to_string()))?;
         }
-        let opts = SqliteConnectOptions::new().filename(path).create_if_missing(true);
+        let opts = SqliteConnectOptions::new()
+            .filename(path)
+            .create_if_missing(true);
         Self::connect(opts, 4).await
     }
 
@@ -32,7 +34,10 @@ impl Storage {
     }
 
     async fn connect(opts: SqliteConnectOptions, max: u32) -> AppResult<Self> {
-        let pool = SqlitePoolOptions::new().max_connections(max).connect_with(opts).await?;
+        let pool = SqlitePoolOptions::new()
+            .max_connections(max)
+            .connect_with(opts)
+            .await?;
         let storage = Self { pool };
         storage.migrate().await?;
         Ok(storage)
@@ -54,12 +59,14 @@ impl Storage {
         for (version, name, sql) in MIGRATIONS.iter().filter(|(v, _, _)| *v > current) {
             let mut tx = self.pool.begin().await?;
             sqlx::raw_sql(*sql).execute(&mut *tx).await?;
-            sqlx::query("INSERT INTO schema_migrations (version, name, applied_at) VALUES (?, ?, ?)")
-                .bind(version)
-                .bind(name)
-                .bind(chrono::Utc::now().to_rfc3339())
-                .execute(&mut *tx)
-                .await?;
+            sqlx::query(
+                "INSERT INTO schema_migrations (version, name, applied_at) VALUES (?, ?, ?)",
+            )
+            .bind(version)
+            .bind(name)
+            .bind(chrono::Utc::now().to_rfc3339())
+            .execute(&mut *tx)
+            .await?;
             tx.commit().await?;
             tracing::info!(version, name, "applied internal migration");
         }
@@ -67,9 +74,11 @@ impl Storage {
     }
 
     pub async fn schema_version(&self) -> AppResult<i64> {
-        Ok(sqlx::query_scalar("SELECT COALESCE(MAX(version), 0) FROM schema_migrations")
-            .fetch_one(&self.pool)
-            .await?)
+        Ok(
+            sqlx::query_scalar("SELECT COALESCE(MAX(version), 0) FROM schema_migrations")
+                .fetch_one(&self.pool)
+                .await?,
+        )
     }
 }
 

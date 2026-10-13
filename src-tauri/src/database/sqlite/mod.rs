@@ -6,6 +6,7 @@ use serde_json::json;
 use sqlx::{Row, SqlitePool};
 
 use crate::error::{AppError, AppResult};
+use crate::metadata::text::mentions_identifier as mentions;
 use crate::metadata::types::normalize_type;
 use crate::metadata::*;
 
@@ -18,8 +19,12 @@ fn map(e: sqlx::Error) -> AppError {
 
 pub async fn introspect(pool: &SqlitePool, database_name: &str) -> AppResult<DatabaseSchema> {
     let mut schema = DatabaseSchema::empty(E, database_name);
-    schema.server_version =
-        Some(sqlx::query_scalar::<_, String>("SELECT sqlite_version()").fetch_one(pool).await.map_err(map)?);
+    schema.server_version = Some(
+        sqlx::query_scalar::<_, String>("SELECT sqlite_version()")
+            .fetch_one(pool)
+            .await
+            .map_err(map)?,
+    );
     schema.namespaces.push(DatabaseNamespace {
         stable_id: StableId::namespace(E, NS),
         name: NS.into(),
@@ -51,7 +56,11 @@ pub async fn introspect(pool: &SqlitePool, database_name: &str) -> AppResult<Dat
         })
         .collect();
 
-    let table_names: Vec<&str> = objs.iter().filter(|o| o.kind == "table").map(|o| o.name.as_str()).collect();
+    let table_names: Vec<&str> = objs
+        .iter()
+        .filter(|o| o.kind == "table")
+        .map(|o| o.name.as_str())
+        .collect();
 
     // Columns + primary keys first: FKs may omit target columns (implicit PK reference).
     let mut pk_of: HashMap<String, Vec<String>> = HashMap::new();
@@ -83,7 +92,11 @@ pub async fn introspect(pool: &SqlitePool, database_name: &str) -> AppResult<Dat
                 name,
                 namespace: NS.into(),
                 ordinal: (i + 1) as i32,
-                data_type: if native.is_empty() { "any".into() } else { normalize_type(E, &native) },
+                data_type: if native.is_empty() {
+                    "any".into()
+                } else {
+                    normalize_type(E, &native)
+                },
                 native_type: native,
                 nullable: c.get::<i64, _>("notnull") == 0 && pk == 0,
                 default: c.get("dflt_value"),
@@ -101,7 +114,11 @@ pub async fn introspect(pool: &SqlitePool, database_name: &str) -> AppResult<Dat
         let pk_cols: Vec<String> = pks.into_iter().map(|(_, n)| n).collect();
         pk_of.insert(obj.name.clone(), pk_cols.clone());
 
-        let without_rowid = obj.sql.as_deref().map(|s| s.to_uppercase().contains("WITHOUT ROWID")).unwrap_or(false);
+        let without_rowid = obj
+            .sql
+            .as_deref()
+            .map(|s| s.to_uppercase().contains("WITHOUT ROWID"))
+            .unwrap_or(false);
         let mut meta = EngineMeta::new();
         meta.insert("withoutRowid".into(), json!(without_rowid));
         tables.insert(
@@ -140,17 +157,26 @@ pub async fn introspect(pool: &SqlitePool, database_name: &str) -> AppResult<Dat
         .fetch_all(pool)
         .await
         .map_err(map)?;
-        let mut grouped: BTreeMap<i64, (String, Vec<String>, Vec<Option<String>>, String, String)> = BTreeMap::new();
+        type FkGroup = (String, Vec<String>, Vec<Option<String>>, String, String);
+        let mut grouped: BTreeMap<i64, FkGroup> = BTreeMap::new();
         for r in &fks {
             let e = grouped.entry(r.get("id")).or_insert_with(|| {
-                (r.get("table"), vec![], vec![], r.get("on_update"), r.get("on_delete"))
+                (
+                    r.get("table"),
+                    vec![],
+                    vec![],
+                    r.get("on_update"),
+                    r.get("on_delete"),
+                )
             });
             e.1.push(r.get("from"));
             e.2.push(r.get("to"));
         }
         for (id, (target, from, to, on_update, on_delete)) in grouped {
             if !tables.contains_key(&target) {
-                schema.warnings.push(format!("foreign key on {name} references missing table {target}"));
+                schema.warnings.push(format!(
+                    "foreign key on {name} references missing table {target}"
+                ));
                 continue;
             }
             let target_cols: Vec<String> = if to.iter().all(Option::is_some) {
@@ -159,7 +185,9 @@ pub async fn introspect(pool: &SqlitePool, database_name: &str) -> AppResult<Dat
                 pk_of.get(&target).cloned().unwrap_or_default()
             };
             if target_cols.len() != from.len() {
-                schema.warnings.push(format!("foreign key on {name} -> {target} could not be resolved"));
+                schema.warnings.push(format!(
+                    "foreign key on {name} -> {target} could not be resolved"
+                ));
                 continue;
             }
             let fk_name = format!("fk_{name}_{id}");
@@ -180,21 +208,24 @@ pub async fn introspect(pool: &SqlitePool, database_name: &str) -> AppResult<Dat
         }
 
         // Indexes
-        let idxs = sqlx::query("SELECT name, \"unique\", origin, partial FROM pragma_index_list(?) ORDER BY name")
-            .bind(name)
-            .fetch_all(pool)
-            .await
-            .map_err(map)?;
+        let idxs = sqlx::query(
+            "SELECT name, \"unique\", origin, partial FROM pragma_index_list(?) ORDER BY name",
+        )
+        .bind(name)
+        .fetch_all(pool)
+        .await
+        .map_err(map)?;
         for ix in &idxs {
             let iname: String = ix.get("name");
             let unique = ix.get::<i64, _>("unique") != 0;
             let origin: String = ix.get("origin");
             let partial = ix.get::<i64, _>("partial") != 0;
-            let parts = sqlx::query("SELECT name, \"key\" FROM pragma_index_xinfo(?) ORDER BY seqno")
-                .bind(&iname)
-                .fetch_all(pool)
-                .await
-                .map_err(map)?;
+            let parts =
+                sqlx::query("SELECT name, \"key\" FROM pragma_index_xinfo(?) ORDER BY seqno")
+                    .bind(&iname)
+                    .fetch_all(pool)
+                    .await
+                    .map_err(map)?;
             let mut columns = vec![];
             let mut included = vec![];
             let mut has_expr = false;
@@ -212,7 +243,10 @@ pub async fn introspect(pool: &SqlitePool, database_name: &str) -> AppResult<Dat
                     (None, false) => {}
                 }
             }
-            let sql = objs.iter().find(|o| o.kind == "index" && o.name == iname).and_then(|o| o.sql.clone());
+            let sql = objs
+                .iter()
+                .find(|o| o.kind == "index" && o.name == iname)
+                .and_then(|o| o.sql.clone());
             let predicate = if partial {
                 sql.as_deref().and_then(|s| {
                     let up = s.to_uppercase();
@@ -261,11 +295,13 @@ pub async fn introspect(pool: &SqlitePool, database_name: &str) -> AppResult<Dat
     }
 
     for obj in objs.iter().filter(|o| o.kind == "view") {
-        let cols = sqlx::query("SELECT cid, name, type, \"notnull\" FROM pragma_table_info(?) ORDER BY cid")
-            .bind(&obj.name)
-            .fetch_all(pool)
-            .await
-            .map_err(map)?;
+        let cols = sqlx::query(
+            "SELECT cid, name, type, \"notnull\" FROM pragma_table_info(?) ORDER BY cid",
+        )
+        .bind(&obj.name)
+        .fetch_all(pool)
+        .await
+        .map_err(map)?;
         schema.views.push(View {
             stable_id: StableId::object(E, "view", NS, &obj.name),
             name: obj.name.clone(),
@@ -283,7 +319,11 @@ pub async fn introspect(pool: &SqlitePool, database_name: &str) -> AppResult<Dat
                         name,
                         namespace: NS.into(),
                         ordinal: (i + 1) as i32,
-                        data_type: if native.is_empty() { "any".into() } else { normalize_type(E, &native) },
+                        data_type: if native.is_empty() {
+                            "any".into()
+                        } else {
+                            normalize_type(E, &native)
+                        },
                         native_type: native,
                         nullable: true,
                         default: None,
@@ -307,7 +347,11 @@ pub async fn introspect(pool: &SqlitePool, database_name: &str) -> AppResult<Dat
         if !tables.contains_key(&obj.table) && !on_view {
             continue;
         }
-        let table = if on_view { StableId::object(E, "view", NS, &obj.table) } else { table };
+        let table = if on_view {
+            StableId::object(E, "view", NS, &obj.table)
+        } else {
+            table
+        };
         schema.triggers.push(Trigger {
             stable_id: StableId::child(E, "trigger", NS, &obj.table, &obj.name),
             name: obj.name.clone(),
@@ -348,12 +392,22 @@ pub async fn introspect(pool: &SqlitePool, database_name: &str) -> AppResult<Dat
     let view_defs: Vec<(StableId, String, String)> = schema
         .views
         .iter()
-        .map(|v| (v.stable_id.clone(), v.name.clone(), v.definition.clone().unwrap_or_default()))
+        .map(|v| {
+            (
+                v.stable_id.clone(),
+                v.name.clone(),
+                v.definition.clone().unwrap_or_default(),
+            )
+        })
         .collect();
     for (id, _, def) in &view_defs {
         for (oid, oname, _) in &view_defs {
             if oid != id && mentions(def, oname) {
-                schema.dependencies.push(Dependency { from: id.clone(), to: oid.clone(), kind: DependencyKind::DependsOn });
+                schema.dependencies.push(Dependency {
+                    from: id.clone(),
+                    to: oid.clone(),
+                    kind: DependencyKind::DependsOn,
+                });
             }
         }
     }
@@ -364,7 +418,9 @@ pub async fn introspect(pool: &SqlitePool, database_name: &str) -> AppResult<Dat
             kind: DependencyKind::TriggerDependency,
         });
     }
-    schema.dependencies.sort_by(|a, b| (&a.from, &a.to, a.kind).cmp(&(&b.from, &b.to, b.kind)));
+    schema
+        .dependencies
+        .sort_by(|a, b| (&a.from, &a.to, a.kind).cmp(&(&b.from, &b.to, b.kind)));
     schema.dependencies.dedup();
 
     schema.tables = tables.into_values().collect();
@@ -378,7 +434,8 @@ fn sort(s: &mut DatabaseSchema) {
     s.triggers.sort_by(|a, b| a.stable_id.cmp(&b.stable_id));
     for t in &mut s.tables {
         t.foreign_keys.sort_by(|a, b| a.stable_id.cmp(&b.stable_id));
-        t.unique_constraints.sort_by(|a, b| a.stable_id.cmp(&b.stable_id));
+        t.unique_constraints
+            .sort_by(|a, b| a.stable_id.cmp(&b.stable_id));
         t.indexes.sort_by(|a, b| a.stable_id.cmp(&b.stable_id));
     }
     s.warnings.sort();
@@ -392,24 +449,6 @@ fn action(s: &str) -> ReferentialAction {
         "SET DEFAULT" => ReferentialAction::SetDefault,
         _ => ReferentialAction::NoAction,
     }
-}
-
-/// True when `name` appears in `sql` as a whole identifier (optionally quoted).
-fn mentions(sql: &str, name: &str) -> bool {
-    let hay = sql.to_lowercase();
-    let needle = name.to_lowercase();
-    let mut start = 0;
-    while let Some(pos) = hay[start..].find(&needle) {
-        let i = start + pos;
-        let before = hay[..i].chars().last();
-        let after = hay[i + needle.len()..].chars().next();
-        let is_ident = |c: char| c.is_alphanumeric() || c == '_';
-        if !before.map(is_ident).unwrap_or(false) && !after.map(is_ident).unwrap_or(false) {
-            return true;
-        }
-        start = i + needle.len().max(1);
-    }
-    false
 }
 
 fn parse_trigger_header(sql: &str) -> (String, Vec<String>) {
@@ -435,19 +474,14 @@ mod tests {
     use super::*;
 
     #[test]
-    fn mentions_matches_whole_identifiers_only() {
-        assert!(mentions("SELECT * FROM orders o", "orders"));
-        assert!(mentions("select * from \"Orders\"", "orders"));
-        assert!(!mentions("SELECT * FROM orders_archive", "orders"));
-        assert!(!mentions("SELECT reorders FROM x", "orders"));
-    }
-
-    #[test]
     fn trigger_header_parsing() {
-        let (t, e) = parse_trigger_header("CREATE TRIGGER x BEFORE INSERT OR UPDATE ON users BEGIN SELECT 1; END");
+        let (t, e) = parse_trigger_header(
+            "CREATE TRIGGER x BEFORE INSERT OR UPDATE ON users BEGIN SELECT 1; END",
+        );
         assert_eq!(t, "BEFORE");
         assert_eq!(e, ["INSERT", "UPDATE"]);
-        let (t, _) = parse_trigger_header("CREATE TRIGGER x INSTEAD OF DELETE ON v BEGIN SELECT 1; END");
+        let (t, _) =
+            parse_trigger_header("CREATE TRIGGER x INSTEAD OF DELETE ON v BEGIN SELECT 1; END");
         assert_eq!(t, "INSTEAD OF");
     }
 }

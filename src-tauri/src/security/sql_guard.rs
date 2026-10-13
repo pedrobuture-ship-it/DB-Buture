@@ -36,10 +36,29 @@ const DENIED_KEYWORDS: &[Keyword] = &[
 
 /// Functions with side effects (sequences, locks, backend control, large objects, file access).
 const DENIED_FUNCTIONS: &[&str] = &[
-    "nextval", "setval", "pg_terminate_backend", "pg_cancel_backend", "pg_reload_conf",
-    "lo_import", "lo_export", "lo_unlink", "lo_create", "pg_advisory_lock", "pg_advisory_xact_lock",
-    "pg_read_file", "pg_read_binary_file", "pg_ls_dir", "dblink", "dblink_exec", "load_file",
-    "sleep", "get_lock", "release_lock", "load_extension", "readfile", "writefile",
+    "nextval",
+    "setval",
+    "pg_terminate_backend",
+    "pg_cancel_backend",
+    "pg_reload_conf",
+    "lo_import",
+    "lo_export",
+    "lo_unlink",
+    "lo_create",
+    "pg_advisory_lock",
+    "pg_advisory_xact_lock",
+    "pg_read_file",
+    "pg_read_binary_file",
+    "pg_ls_dir",
+    "dblink",
+    "dblink_exec",
+    "load_file",
+    "sleep",
+    "get_lock",
+    "release_lock",
+    "load_extension",
+    "readfile",
+    "writefile",
 ];
 
 fn dialect(engine: Engine) -> Box<dyn Dialect> {
@@ -60,14 +79,18 @@ pub fn check_read_only(sql: &str, engine: Engine) -> AppResult<()> {
     let statements = Parser::parse_sql(d.as_ref(), sql)
         .map_err(|e| AppError::Validation(format!("could not parse SQL: {e}")))?;
     if statements.len() != 1 {
-        return Err(AppError::ReadOnly("only a single statement is allowed".into()));
+        return Err(AppError::ReadOnly(
+            "only a single statement is allowed".into(),
+        ));
     }
 
     match &statements[0] {
         Statement::Query(_) => {}
         Statement::Explain { analyze, .. } => {
             if *analyze {
-                return Err(AppError::ReadOnly("EXPLAIN ANALYZE executes the statement and is blocked".into()));
+                return Err(AppError::ReadOnly(
+                    "EXPLAIN ANALYZE executes the statement and is blocked".into(),
+                ));
             }
         }
         Statement::ExplainTable { .. }
@@ -80,7 +103,10 @@ pub fn check_read_only(sql: &str, engine: Engine) -> AppResult<()> {
         | Statement::ShowSchemas { .. }
         | Statement::ShowStatus { .. } => {}
         other => {
-            return Err(AppError::ReadOnly(format!("{} statements are blocked", statement_kind(other))));
+            return Err(AppError::ReadOnly(format!(
+                "{} statements are blocked",
+                statement_kind(other)
+            )));
         }
     }
 
@@ -94,11 +120,16 @@ pub fn check_read_only(sql: &str, engine: Engine) -> AppResult<()> {
                 continue;
             }
             if DENIED_KEYWORDS.contains(&w.keyword) {
-                return Err(AppError::ReadOnly(format!("`{}` is not allowed in read-only mode", w.value.to_uppercase())));
+                return Err(AppError::ReadOnly(format!(
+                    "`{}` is not allowed in read-only mode",
+                    w.value.to_uppercase()
+                )));
             }
             let lower = w.value.to_lowercase();
             if DENIED_FUNCTIONS.contains(&lower.as_str()) && next_is_paren(&tokens, i) {
-                return Err(AppError::ReadOnly(format!("function `{lower}` has side effects and is blocked")));
+                return Err(AppError::ReadOnly(format!(
+                    "function `{lower}` has side effects and is blocked"
+                )));
             }
         }
     }
@@ -115,7 +146,10 @@ fn next_is_paren(tokens: &[Token], i: usize) -> bool {
 
 fn statement_kind(s: &Statement) -> String {
     let dbg = format!("{s:?}");
-    dbg.split(|c: char| !c.is_alphanumeric()).next().unwrap_or("this kind of").to_uppercase()
+    dbg.split(|c: char| !c.is_alphanumeric())
+        .next()
+        .unwrap_or("this kind of")
+        .to_uppercase()
 }
 
 #[cfg(test)]
@@ -126,7 +160,10 @@ mod tests {
         check_read_only(sql, Engine::Postgres).unwrap_or_else(|e| panic!("{sql}: {e}"));
     }
     fn blocked(sql: &str) {
-        assert!(check_read_only(sql, Engine::Postgres).is_err(), "should block: {sql}");
+        assert!(
+            check_read_only(sql, Engine::Postgres).is_err(),
+            "should block: {sql}"
+        );
     }
 
     #[test]

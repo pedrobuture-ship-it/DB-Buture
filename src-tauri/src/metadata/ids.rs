@@ -20,7 +20,12 @@ impl StableId {
     }
 
     pub fn table(engine: Engine, namespace: &str, name: &str) -> Self {
-        Self(format!("{}:{}.{}", engine.slug(), esc(namespace), esc(name)))
+        Self(format!(
+            "{}:{}.{}",
+            engine.slug(),
+            esc(namespace),
+            esc(name)
+        ))
     }
 
     pub fn namespace(engine: Engine, name: &str) -> Self {
@@ -29,7 +34,13 @@ impl StableId {
 
     /// Namespaced top level object (view, index, sequence, ...).
     pub fn object(engine: Engine, kind: &str, namespace: &str, name: &str) -> Self {
-        Self(format!("{}:{}:{}.{}", engine.slug(), kind, esc(namespace), esc(name)))
+        Self(format!(
+            "{}:{}:{}.{}",
+            engine.slug(),
+            kind,
+            esc(namespace),
+            esc(name)
+        ))
     }
 
     /// Object that lives under a table (column, constraint, trigger).
@@ -121,7 +132,10 @@ mod tests {
     #[test]
     fn control_and_invisible_chars_are_escaped() {
         let id = StableId::table(Engine::Sqlite, "main", "a\u{0}b\u{200B}c\n");
-        assert!(id.as_str().chars().all(|c| !c.is_control() && c != '\u{200B}'));
+        assert!(id
+            .as_str()
+            .chars()
+            .all(|c| !c.is_control() && c != '\u{200B}'));
     }
 
     #[test]

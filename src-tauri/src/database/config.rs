@@ -68,12 +68,16 @@ impl ConnectionConfig {
                 require(&self.database, "database")?;
                 require(&self.username, "username")?;
                 if self.port == Some(0) {
-                    return Err(AppError::Validation("port must be between 1 and 65535".into()));
+                    return Err(AppError::Validation(
+                        "port must be between 1 and 65535".into(),
+                    ));
                 }
             }
             Engine::Sqlite => require(&self.file_path, "file path")?,
             Engine::Generic => {
-                return Err(AppError::Validation("generic is not a connectable engine".into()))
+                return Err(AppError::Validation(
+                    "generic is not a connectable engine".into(),
+                ))
             }
         }
         Ok(())
@@ -131,7 +135,13 @@ mod tests {
 
     #[test]
     fn ssl_mode_roundtrips() {
-        for m in [SslMode::Disable, SslMode::Prefer, SslMode::Require, SslMode::VerifyCa, SslMode::VerifyFull] {
+        for m in [
+            SslMode::Disable,
+            SslMode::Prefer,
+            SslMode::Require,
+            SslMode::VerifyCa,
+            SslMode::VerifyFull,
+        ] {
             assert_eq!(SslMode::parse(m.as_str()), Some(m));
         }
     }

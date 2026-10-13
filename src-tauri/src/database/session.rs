@@ -52,16 +52,35 @@ impl Session {
             Engine::Generic => return Err(AppError::Validation("not a connectable engine".into())),
         };
         let server_version = match &pool {
-            Pool::Postgres(p) => sqlx::query_scalar::<_, String>("SHOW server_version").fetch_one(p).await,
-            Pool::Mysql(p) => sqlx::query_scalar::<_, String>("SELECT CAST(VERSION() AS CHAR)").fetch_one(p).await,
-            Pool::Sqlite(p) => sqlx::query_scalar::<_, String>("SELECT sqlite_version()").fetch_one(p).await,
+            Pool::Postgres(p) => {
+                sqlx::query_scalar::<_, String>("SHOW server_version")
+                    .fetch_one(p)
+                    .await
+            }
+            Pool::Mysql(p) => {
+                sqlx::query_scalar::<_, String>("SELECT CAST(VERSION() AS CHAR)")
+                    .fetch_one(p)
+                    .await
+            }
+            Pool::Sqlite(p) => {
+                sqlx::query_scalar::<_, String>("SELECT sqlite_version()")
+                    .fetch_one(p)
+                    .await
+            }
         }
         .map_err(|e| AppError::Connection(clean(e)))?;
-        Ok(Session { config: config.clone(), pool, server_version })
+        Ok(Session {
+            config: config.clone(),
+            pool,
+            server_version,
+        })
     }
 
     /// Connects, measures a round trip and closes again. Nothing is kept.
-    pub async fn probe(config: &ConnectionConfig, password: Option<&str>) -> AppResult<ConnectionProbe> {
+    pub async fn probe(
+        config: &ConnectionConfig,
+        password: Option<&str>,
+    ) -> AppResult<ConnectionProbe> {
         let session = Session::connect(config, password).await?;
         let latency_ms = session.ping().await?;
         let probe = ConnectionProbe {
@@ -166,8 +185,12 @@ async fn mysql_pool(c: &ConnectionConfig, password: Option<&str>) -> AppResult<M
         .acquire_timeout(CONNECT_TIMEOUT)
         .after_connect(|conn, _| {
             Box::pin(async move {
-                sqlx::query("SET SESSION TRANSACTION READ ONLY").execute(&mut *conn).await?;
-                sqlx::query("SET SESSION max_execution_time = 30000").execute(&mut *conn).await?;
+                sqlx::query("SET SESSION TRANSACTION READ ONLY")
+                    .execute(&mut *conn)
+                    .await?;
+                sqlx::query("SET SESSION max_execution_time = 30000")
+                    .execute(&mut *conn)
+                    .await?;
                 Ok(())
             })
         })
@@ -179,9 +202,14 @@ async fn mysql_pool(c: &ConnectionConfig, password: Option<&str>) -> AppResult<M
 async fn sqlite_pool(c: &ConnectionConfig) -> AppResult<SqlitePool> {
     let path = c.file_path.as_deref().unwrap_or_default();
     if !std::path::Path::new(path).is_file() {
-        return Err(AppError::Connection(format!("SQLite file not found: {path}")));
+        return Err(AppError::Connection(format!(
+            "SQLite file not found: {path}"
+        )));
     }
-    let o = SqliteConnectOptions::new().filename(path).read_only(true).create_if_missing(false);
+    let o = SqliteConnectOptions::new()
+        .filename(path)
+        .read_only(true)
+        .create_if_missing(false);
     SqlitePoolOptions::new()
         .max_connections(2)
         .acquire_timeout(CONNECT_TIMEOUT)
@@ -193,5 +221,9 @@ async fn sqlite_pool(c: &ConnectionConfig) -> AppResult<SqlitePool> {
 /// Error text for the UI. sqlx connect errors never include the password, but we keep
 /// only the first line to avoid leaking driver internals.
 fn clean(e: sqlx::Error) -> String {
-    e.to_string().lines().next().unwrap_or("unknown error").to_string()
+    e.to_string()
+        .lines()
+        .next()
+        .unwrap_or("unknown error")
+        .to_string()
 }

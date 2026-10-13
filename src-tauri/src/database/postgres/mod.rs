@@ -26,16 +26,29 @@ pub async fn fetch_catalog(pool: &PgPool, include_system: bool) -> AppResult<Raw
 
     // pg_get_*def() output depends on search_path; pin it so definitions are always
     // schema-qualified and identical across sessions.
-    sqlx::query("SET LOCAL search_path TO pg_catalog").execute(&mut *tx).await.map_err(map)?;
+    sqlx::query("SET LOCAL search_path TO pg_catalog")
+        .execute(&mut *tx)
+        .await
+        .map_err(map)?;
 
     macro_rules! rows {
         ($q:expr) => {
-            sqlx::query_as($q).bind(include_system).fetch_all(&mut *tx).await.map_err(map)?
+            sqlx::query_as($q)
+                .bind(include_system)
+                .fetch_all(&mut *tx)
+                .await
+                .map_err(map)?
         };
     }
 
-    let version: String = sqlx::query_scalar(queries::VERSION).fetch_one(&mut *tx).await.map_err(map)?;
-    let database: String = sqlx::query_scalar(queries::DATABASE).fetch_one(&mut *tx).await.map_err(map)?;
+    let version: String = sqlx::query_scalar(queries::VERSION)
+        .fetch_one(&mut *tx)
+        .await
+        .map_err(map)?;
+    let database: String = sqlx::query_scalar(queries::DATABASE)
+        .fetch_one(&mut *tx)
+        .await
+        .map_err(map)?;
     let catalog = RawCatalog {
         version,
         database,

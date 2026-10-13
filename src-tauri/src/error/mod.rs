@@ -52,7 +52,11 @@ struct ErrorPayload {
 
 impl Serialize for AppError {
     fn serialize<S: serde::Serializer>(&self, s: S) -> Result<S::Ok, S::Error> {
-        ErrorPayload { kind: self.kind(), message: self.to_string() }.serialize(s)
+        ErrorPayload {
+            kind: self.kind(),
+            message: self.to_string(),
+        }
+        .serialize(s)
     }
 }
 

@@ -35,23 +35,26 @@ pub fn normalize(raw: RawCatalog) -> DatabaseSchema {
         if let Some(g) = &c.generated {
             meta.insert("generationKind".into(), json!(g));
         }
-        columns_by_rel.entry((c.namespace.as_str(), c.relation.as_str())).or_default().push(Column {
-            stable_id: StableId::child(E, "column", &c.namespace, &c.relation, &c.name),
-            name: c.name.clone(),
-            namespace: c.namespace.clone(),
-            ordinal: c.ordinal,
-            data_type: normalize_type(E, &c.native_type),
-            native_type: c.native_type.clone(),
-            nullable: !c.not_null,
-            default: c.default.clone(),
-            generated: c.generated.as_ref().map(|_| "stored".to_string()),
-            identity: c.identity.as_deref().map(|i| match i {
-                "a" => "always".to_string(),
-                _ => "by default".to_string(),
-            }),
-            comment: c.comment.clone(),
-            engine_specific_metadata: meta,
-        });
+        columns_by_rel
+            .entry((c.namespace.as_str(), c.relation.as_str()))
+            .or_default()
+            .push(Column {
+                stable_id: StableId::child(E, "column", &c.namespace, &c.relation, &c.name),
+                name: c.name.clone(),
+                namespace: c.namespace.clone(),
+                ordinal: c.ordinal,
+                data_type: normalize_type(E, &c.native_type),
+                native_type: c.native_type.clone(),
+                nullable: !c.not_null,
+                default: c.default.clone(),
+                generated: c.generated.as_ref().map(|_| "stored".to_string()),
+                identity: c.identity.as_deref().map(|i| match i {
+                    "a" => "always".to_string(),
+                    _ => "by default".to_string(),
+                }),
+                comment: c.comment.clone(),
+                engine_specific_metadata: meta,
+            });
     }
 
     let table_ids: HashSet<StableId> = raw
@@ -114,7 +117,9 @@ pub fn normalize(raw: RawCatalog) -> DatabaseSchema {
 
     for c in &raw.constraints {
         let tid = StableId::table(E, &c.namespace, &c.relation);
-        let Some(&pos) = table_pos.get(&tid) else { continue };
+        let Some(&pos) = table_pos.get(&tid) else {
+            continue;
+        };
         let sid = StableId::child(E, "constraint", &c.namespace, &c.relation, &c.name);
         let mut meta = EngineMeta::new();
         meta.insert("definition".into(), json!(c.definition));
@@ -149,7 +154,9 @@ pub fn normalize(raw: RawCatalog) -> DatabaseSchema {
                 let (Some(rns), Some(rrel), Some(rcols)) =
                     (&c.ref_namespace, &c.ref_relation, &c.ref_columns)
                 else {
-                    schema.warnings.push(format!("foreign key {} has no target", c.name));
+                    schema
+                        .warnings
+                        .push(format!("foreign key {} has no target", c.name));
                     continue;
                 };
                 let target = StableId::table(E, rns, rrel);
@@ -179,7 +186,9 @@ pub fn normalize(raw: RawCatalog) -> DatabaseSchema {
 
     for i in &raw.indexes {
         let tid = StableId::table(E, &i.namespace, &i.table);
-        let Some(&pos) = table_pos.get(&tid) else { continue };
+        let Some(&pos) = table_pos.get(&tid) else {
+            continue;
+        };
         let mut columns = vec![];
         let mut expressions = vec![];
         for (entry, is_expr) in i.key_entries.iter().zip(&i.key_is_expr) {
@@ -213,7 +222,11 @@ pub fn normalize(raw: RawCatalog) -> DatabaseSchema {
             stable_id: StableId::routine(E, &r.namespace, &r.name, &r.arguments),
             name: r.name.clone(),
             namespace: r.namespace.clone(),
-            kind: if r.is_procedure { RoutineKind::Procedure } else { RoutineKind::Function },
+            kind: if r.is_procedure {
+                RoutineKind::Procedure
+            } else {
+                RoutineKind::Function
+            },
             language: Some(r.language.clone()),
             arguments: r.arguments.clone(),
             return_type: r.return_type.clone(),
@@ -221,7 +234,11 @@ pub fn normalize(raw: RawCatalog) -> DatabaseSchema {
             engine_specific_metadata: EngineMeta::new(),
         });
     }
-    let routine_ids: HashSet<StableId> = schema.routines.iter().map(|r| r.stable_id.clone()).collect();
+    let routine_ids: HashSet<StableId> = schema
+        .routines
+        .iter()
+        .map(|r| r.stable_id.clone())
+        .collect();
 
     for s in &raw.sequences {
         schema.sequences.push(Sequence {
@@ -239,10 +256,16 @@ pub fn normalize(raw: RawCatalog) -> DatabaseSchema {
 
     for t in &raw.triggers {
         let table = StableId::table(E, &t.namespace, &t.table);
-        if !table_pos.contains_key(&table) && !schema.views.iter().any(|v| v.name == t.table && v.namespace == t.namespace) {
+        if !table_pos.contains_key(&table)
+            && !schema
+                .views
+                .iter()
+                .any(|v| v.name == t.table && v.namespace == t.namespace)
+        {
             continue;
         }
-        let function = StableId::routine(E, &t.function_namespace, &t.function_name, &t.function_args);
+        let function =
+            StableId::routine(E, &t.function_namespace, &t.function_name, &t.function_args);
         schema.triggers.push(Trigger {
             stable_id: StableId::child(E, "trigger", &t.namespace, &t.table, &t.name),
             name: t.name.clone(),
@@ -282,12 +305,18 @@ pub fn normalize(raw: RawCatalog) -> DatabaseSchema {
     };
     for d in &raw.view_dependencies {
         let (Some(from), Some(to)) = (
-            view_ids.get(&(d.view_namespace.as_str(), d.view_name.as_str())).cloned(),
+            view_ids
+                .get(&(d.view_namespace.as_str(), d.view_name.as_str()))
+                .cloned(),
             resolve(&d.source_namespace, &d.source_name),
         ) else {
             continue;
         };
-        deps.push(Dependency { from, to, kind: DependencyKind::DependsOn });
+        deps.push(Dependency {
+            from,
+            to,
+            kind: DependencyKind::DependsOn,
+        });
     }
     for tr in &schema.triggers {
         deps.push(Dependency {
@@ -323,17 +352,27 @@ fn action(code: Option<&str>) -> ReferentialAction {
 
 /// Deterministic ordering independent of query result order.
 pub fn sort_schema(schema: &mut DatabaseSchema) {
-    schema.namespaces.sort_by(|a, b| a.stable_id.cmp(&b.stable_id));
+    schema
+        .namespaces
+        .sort_by(|a, b| a.stable_id.cmp(&b.stable_id));
     schema.tables.sort_by(|a, b| a.stable_id.cmp(&b.stable_id));
     schema.views.sort_by(|a, b| a.stable_id.cmp(&b.stable_id));
-    schema.triggers.sort_by(|a, b| a.stable_id.cmp(&b.stable_id));
-    schema.routines.sort_by(|a, b| a.stable_id.cmp(&b.stable_id));
-    schema.sequences.sort_by(|a, b| a.stable_id.cmp(&b.stable_id));
+    schema
+        .triggers
+        .sort_by(|a, b| a.stable_id.cmp(&b.stable_id));
+    schema
+        .routines
+        .sort_by(|a, b| a.stable_id.cmp(&b.stable_id));
+    schema
+        .sequences
+        .sort_by(|a, b| a.stable_id.cmp(&b.stable_id));
     for t in &mut schema.tables {
         t.columns.sort_by_key(|c| c.ordinal);
         t.foreign_keys.sort_by(|a, b| a.stable_id.cmp(&b.stable_id));
-        t.unique_constraints.sort_by(|a, b| a.stable_id.cmp(&b.stable_id));
-        t.check_constraints.sort_by(|a, b| a.stable_id.cmp(&b.stable_id));
+        t.unique_constraints
+            .sort_by(|a, b| a.stable_id.cmp(&b.stable_id));
+        t.check_constraints
+            .sort_by(|a, b| a.stable_id.cmp(&b.stable_id));
         t.indexes.sort_by(|a, b| a.stable_id.cmp(&b.stable_id));
     }
     for v in &mut schema.views {
@@ -415,7 +454,10 @@ mod tests {
         RawCatalog {
             version: "17.2".into(),
             database: "app".into(),
-            namespaces: vec![RawNamespace { name: "public".into(), is_system: false }],
+            namespaces: vec![RawNamespace {
+                name: "public".into(),
+                is_system: false,
+            }],
             relations: vec![
                 rel("public", "orders", "r"),
                 rel("public", "users", "r"),
@@ -423,7 +465,14 @@ mod tests {
                 rel("public", "user_orders", "v"),
             ],
             columns: vec![
-                col("public", "users", "email", 2, "character varying(255)", true),
+                col(
+                    "public",
+                    "users",
+                    "email",
+                    2,
+                    "character varying(255)",
+                    true,
+                ),
                 col("public", "users", "id", 1, "bigint", true),
                 col("public", "orders", "id", 1, "bigint", true),
                 col("public", "orders", "user_id", 2, "bigint", false),
@@ -447,7 +496,13 @@ mod tests {
                     validated: true,
                 },
                 fk("orders_user_fk", "orders", &["user_id"], "users", &["id"]),
-                fk("items_order_fk", "order_items", &["order_id"], "orders", &["id"]),
+                fk(
+                    "items_order_fk",
+                    "order_items",
+                    &["order_id"],
+                    "orders",
+                    &["id"],
+                ),
             ],
             view_dependencies: vec![RawViewDependency {
                 view_namespace: "public".into(),
@@ -464,7 +519,10 @@ mod tests {
         let s = normalize(catalog());
         assert_eq!(s.tables.len(), 3);
         let items = s.tables.iter().find(|t| t.name == "order_items").unwrap();
-        assert_eq!(items.primary_key.as_ref().unwrap().columns, ["order_id", "line"]);
+        assert_eq!(
+            items.primary_key.as_ref().unwrap().columns,
+            ["order_id", "line"]
+        );
         let users = s.tables.iter().find(|t| t.name == "users").unwrap();
         assert_eq!(users.columns[0].name, "id");
         assert_eq!(users.columns[1].data_type, "varchar");
@@ -476,17 +534,32 @@ mod tests {
         let s = normalize(catalog());
         let orders = s.tables.iter().find(|t| t.name == "orders").unwrap();
         assert_eq!(orders.foreign_keys[0].on_delete, ReferentialAction::Cascade);
-        assert_eq!(s.dependencies.iter().filter(|d| d.kind == DependencyKind::ForeignKey).count(), 2);
-        assert!(s.dependencies.iter().any(|d| d.kind == DependencyKind::DependsOn
-            && d.from.as_str() == "postgres:view:public.user_orders"
-            && d.to.as_str() == "postgres:public.orders"));
+        assert_eq!(
+            s.dependencies
+                .iter()
+                .filter(|d| d.kind == DependencyKind::ForeignKey)
+                .count(),
+            2
+        );
+        assert!(s
+            .dependencies
+            .iter()
+            .any(|d| d.kind == DependencyKind::DependsOn
+                && d.from.as_str() == "postgres:view:public.user_orders"
+                && d.to.as_str() == "postgres:public.orders"));
         validate(&s).unwrap();
     }
 
     #[test]
     fn composite_fk_keeps_all_columns() {
         let mut c = catalog();
-        c.constraints.push(fk("c", "order_items", &["order_id", "line"], "order_items", &["order_id", "line"]));
+        c.constraints.push(fk(
+            "c",
+            "order_items",
+            &["order_id", "line"],
+            "order_items",
+            &["order_id", "line"],
+        ));
         let s = normalize(c);
         let t = s.tables.iter().find(|t| t.name == "order_items").unwrap();
         let f = t.foreign_keys.iter().find(|f| f.name == "c").unwrap();
@@ -508,7 +581,8 @@ mod tests {
     #[test]
     fn dangling_fk_is_dropped_with_warning() {
         let mut c = catalog();
-        c.constraints.push(fk("ghost", "orders", &["user_id"], "missing", &["id"]));
+        c.constraints
+            .push(fk("ghost", "orders", &["user_id"], "missing", &["id"]));
         let s = normalize(c);
         assert!(s.warnings.iter().any(|w| w.contains("ghost")));
         validate(&s).unwrap();
@@ -519,7 +593,14 @@ mod tests {
         let mut c = catalog();
         c.relations[0].estimated_rows = Some(-1);
         let s = normalize(c);
-        assert_eq!(s.tables.iter().find(|t| t.name == "orders").unwrap().estimated_rows, None);
+        assert_eq!(
+            s.tables
+                .iter()
+                .find(|t| t.name == "orders")
+                .unwrap()
+                .estimated_rows,
+            None
+        );
     }
 
     #[test]

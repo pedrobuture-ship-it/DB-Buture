@@ -43,7 +43,8 @@ const CONSTRAINTS: &str = "SELECT CAST(tc.TABLE_NAME AS CHAR) AS tbl, CAST(tc.CO
   WHERE tc.TABLE_SCHEMA = DATABASE() AND tc.CONSTRAINT_TYPE IN ('PRIMARY KEY','FOREIGN KEY','UNIQUE')
   ORDER BY tc.TABLE_NAME, tc.CONSTRAINT_NAME, kcu.ORDINAL_POSITION";
 
-const CHECKS: &str = "SELECT CAST(tc.TABLE_NAME AS CHAR) AS tbl, CAST(cc.CONSTRAINT_NAME AS CHAR) AS name,
+const CHECKS: &str =
+    "SELECT CAST(tc.TABLE_NAME AS CHAR) AS tbl, CAST(cc.CONSTRAINT_NAME AS CHAR) AS name,
     CAST(cc.CHECK_CLAUSE AS CHAR) AS clause
   FROM information_schema.TABLE_CONSTRAINTS tc
   JOIN information_schema.CHECK_CONSTRAINTS cc
@@ -60,11 +61,13 @@ const INDEXES: &str = "SELECT CAST(TABLE_NAME AS CHAR) AS tbl, CAST(INDEX_NAME A
 const VIEWS: &str = "SELECT CAST(TABLE_NAME AS CHAR) AS name, CAST(VIEW_DEFINITION AS CHAR) AS def
   FROM information_schema.VIEWS WHERE TABLE_SCHEMA = DATABASE() ORDER BY TABLE_NAME";
 
-const VIEW_USAGE: &str = "SELECT CAST(VIEW_NAME AS CHAR) AS view_name, CAST(TABLE_SCHEMA AS CHAR) AS src_schema,
+const VIEW_USAGE: &str =
+    "SELECT CAST(VIEW_NAME AS CHAR) AS view_name, CAST(TABLE_SCHEMA AS CHAR) AS src_schema,
     CAST(TABLE_NAME AS CHAR) AS src_name
   FROM information_schema.VIEW_TABLE_USAGE WHERE VIEW_SCHEMA = DATABASE() ORDER BY 1, 2, 3";
 
-const TRIGGERS: &str = "SELECT CAST(TRIGGER_NAME AS CHAR) AS name, CAST(EVENT_OBJECT_TABLE AS CHAR) AS tbl,
+const TRIGGERS: &str =
+    "SELECT CAST(TRIGGER_NAME AS CHAR) AS name, CAST(EVENT_OBJECT_TABLE AS CHAR) AS tbl,
     CAST(ACTION_TIMING AS CHAR) AS timing, CAST(EVENT_MANIPULATION AS CHAR) AS event,
     CAST(ACTION_STATEMENT AS CHAR) AS body
   FROM information_schema.TRIGGERS WHERE TRIGGER_SCHEMA = DATABASE() ORDER BY TRIGGER_NAME";
@@ -80,9 +83,14 @@ const ROUTINES: &str = "SELECT CAST(r.ROUTINE_NAME AS CHAR) AS name, CAST(r.ROUT
   FROM information_schema.ROUTINES r WHERE r.ROUTINE_SCHEMA = DATABASE() ORDER BY r.ROUTINE_NAME";
 
 pub async fn introspect(pool: &MySqlPool) -> AppResult<DatabaseSchema> {
-    let version: String = sqlx::query_scalar("SELECT CAST(VERSION() AS CHAR)").fetch_one(pool).await.map_err(map)?;
-    let ns: Option<String> =
-        sqlx::query_scalar("SELECT CAST(DATABASE() AS CHAR)").fetch_one(pool).await.map_err(map)?;
+    let version: String = sqlx::query_scalar("SELECT CAST(VERSION() AS CHAR)")
+        .fetch_one(pool)
+        .await
+        .map_err(map)?;
+    let ns: Option<String> = sqlx::query_scalar("SELECT CAST(DATABASE() AS CHAR)")
+        .fetch_one(pool)
+        .await
+        .map_err(map)?;
     let ns = ns.ok_or_else(|| AppError::Introspection("no database selected".into()))?;
 
     let mut schema = DatabaseSchema::empty(E, ns.clone());
@@ -96,7 +104,10 @@ pub async fn introspect(pool: &MySqlPool) -> AppResult<DatabaseSchema> {
 
     let tables = sqlx::query(TABLES).fetch_all(pool).await.map_err(map)?;
     let columns = sqlx::query(COLUMNS).fetch_all(pool).await.map_err(map)?;
-    let constraints = sqlx::query(CONSTRAINTS).fetch_all(pool).await.map_err(map)?;
+    let constraints = sqlx::query(CONSTRAINTS)
+        .fetch_all(pool)
+        .await
+        .map_err(map)?;
     let checks = sqlx::query(CHECKS).fetch_all(pool).await.map_err(map)?;
     let indexes = sqlx::query(INDEXES).fetch_all(pool).await.map_err(map)?;
     let views = sqlx::query(VIEWS).fetch_all(pool).await.map_err(map)?;
@@ -133,8 +144,12 @@ pub async fn introspect(pool: &MySqlPool) -> AppResult<DatabaseSchema> {
             nullable: r.get::<String, _>("nullable") == "YES",
             default: r.get("dflt"),
             generated,
-            identity: extra_l.contains("auto_increment").then(|| "auto_increment".to_string()),
-            comment: r.get::<Option<String>, _>("comment").filter(|c| !c.is_empty()),
+            identity: extra_l
+                .contains("auto_increment")
+                .then(|| "auto_increment".to_string()),
+            comment: r
+                .get::<Option<String>, _>("comment")
+                .filter(|c| !c.is_empty()),
             engine_specific_metadata: meta,
         });
     }
@@ -157,7 +172,9 @@ pub async fn introspect(pool: &MySqlPool) -> AppResult<DatabaseSchema> {
                 stable_id: StableId::table(E, &ns, &name),
                 name,
                 namespace: ns.clone(),
-                comment: r.get::<Option<String>, _>("comment").filter(|c| !c.is_empty()),
+                comment: r
+                    .get::<Option<String>, _>("comment")
+                    .filter(|c| !c.is_empty()),
                 estimated_rows: r.get("est_rows"),
                 size_bytes: r.get("size"),
                 columns: c,
@@ -201,7 +218,9 @@ pub async fn introspect(pool: &MySqlPool) -> AppResult<DatabaseSchema> {
         }
     }
     for ((tbl, name), g) in groups {
-        let Some(t) = by_table.get_mut(&tbl) else { continue };
+        let Some(t) = by_table.get_mut(&tbl) else {
+            continue;
+        };
         let sid = StableId::child(E, "constraint", &ns, &tbl, &name);
         match g.kind.as_str() {
             "PRIMARY KEY" => {
@@ -221,7 +240,9 @@ pub async fn introspect(pool: &MySqlPool) -> AppResult<DatabaseSchema> {
                 engine_specific_metadata: EngineMeta::new(),
             }),
             "FOREIGN KEY" => {
-                let (Some(rs), Some(rt)) = (g.ref_schema, g.ref_table) else { continue };
+                let (Some(rs), Some(rt)) = (g.ref_schema, g.ref_table) else {
+                    continue;
+                };
                 if rs != ns {
                     schema.warnings.push(format!(
                         "foreign key {tbl}.{name} references {rs}.{rt} in another database (not introspected)"
@@ -271,14 +292,19 @@ pub async fn introspect(pool: &MySqlPool) -> AppResult<DatabaseSchema> {
         let ix = ixs.entry((r.get("tbl"), r.get("name"))).or_default();
         ix.non_unique = r.get::<i64, _>("non_unique") != 0;
         ix.method = r.get("method");
-        match (r.get::<Option<String>, _>("col"), r.get::<Option<String>, _>("expr")) {
+        match (
+            r.get::<Option<String>, _>("col"),
+            r.get::<Option<String>, _>("expr"),
+        ) {
             (Some(c), _) => ix.columns.push(c),
             (None, Some(e)) => ix.expressions.push(e),
             _ => {}
         }
     }
     for ((tbl, name), ix) in ixs {
-        let Some(t) = by_table.get_mut(&tbl) else { continue };
+        let Some(t) = by_table.get_mut(&tbl) else {
+            continue;
+        };
         let primary = name == "PRIMARY";
         t.indexes.push(Index {
             stable_id: StableId::object(E, "index", &ns, &format!("{tbl}.{name}")),
@@ -320,7 +346,11 @@ pub async fn introspect(pool: &MySqlPool) -> AppResult<DatabaseSchema> {
             stable_id: StableId::routine(E, &ns, &name, &args),
             name,
             namespace: ns.clone(),
-            kind: if is_proc { RoutineKind::Procedure } else { RoutineKind::Function },
+            kind: if is_proc {
+                RoutineKind::Procedure
+            } else {
+                RoutineKind::Function
+            },
             language: r.get("language"),
             arguments: args,
             return_type: r.get("returns"),
@@ -387,18 +417,26 @@ pub async fn introspect(pool: &MySqlPool) -> AppResult<DatabaseSchema> {
             kind: DependencyKind::TriggerDependency,
         });
     }
-    schema.dependencies.sort_by(|a, b| (&a.from, &a.to, a.kind).cmp(&(&b.from, &b.to, b.kind)));
+    schema
+        .dependencies
+        .sort_by(|a, b| (&a.from, &a.to, a.kind).cmp(&(&b.from, &b.to, b.kind)));
     schema.dependencies.dedup();
 
     schema.tables = by_table.into_values().collect();
     schema.tables.sort_by(|a, b| a.stable_id.cmp(&b.stable_id));
     schema.views.sort_by(|a, b| a.stable_id.cmp(&b.stable_id));
-    schema.triggers.sort_by(|a, b| a.stable_id.cmp(&b.stable_id));
-    schema.routines.sort_by(|a, b| a.stable_id.cmp(&b.stable_id));
+    schema
+        .triggers
+        .sort_by(|a, b| a.stable_id.cmp(&b.stable_id));
+    schema
+        .routines
+        .sort_by(|a, b| a.stable_id.cmp(&b.stable_id));
     for t in &mut schema.tables {
         t.foreign_keys.sort_by(|a, b| a.stable_id.cmp(&b.stable_id));
-        t.unique_constraints.sort_by(|a, b| a.stable_id.cmp(&b.stable_id));
-        t.check_constraints.sort_by(|a, b| a.stable_id.cmp(&b.stable_id));
+        t.unique_constraints
+            .sort_by(|a, b| a.stable_id.cmp(&b.stable_id));
+        t.check_constraints
+            .sort_by(|a, b| a.stable_id.cmp(&b.stable_id));
         t.indexes.sort_by(|a, b| a.stable_id.cmp(&b.stable_id));
     }
     schema.warnings.sort();

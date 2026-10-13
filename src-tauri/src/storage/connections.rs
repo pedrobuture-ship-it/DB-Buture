@@ -28,7 +28,9 @@ fn parse_engine(s: &str) -> AppResult<Engine> {
         "postgres" => Ok(Engine::Postgres),
         "mysql" => Ok(Engine::Mysql),
         "sqlite" => Ok(Engine::Sqlite),
-        other => Err(AppError::Storage(format!("unknown engine '{other}' in saved connection"))),
+        other => Err(AppError::Storage(format!(
+            "unknown engine '{other}' in saved connection"
+        ))),
     }
 }
 
@@ -97,7 +99,9 @@ fn row_to_connection(row: &sqlx::sqlite::SqliteRow) -> AppResult<SavedConnection
         config: ConnectionConfig {
             engine,
             host: row.try_get("host")?,
-            port: row.try_get::<Option<i64>, _>("port")?.and_then(|p| u16::try_from(p).ok()),
+            port: row
+                .try_get::<Option<i64>, _>("port")?
+                .and_then(|p| u16::try_from(p).ok()),
             database: row.try_get("database_name")?,
             username: row.try_get("username")?,
             ssl_mode: SslMode::parse(&ssl).unwrap_or_default(),
@@ -139,13 +143,19 @@ mod tests {
         s.save_connection(&sample("2", "alpha")).await.unwrap();
 
         let list = s.list_connections().await.unwrap();
-        assert_eq!(list.iter().map(|c| c.name.as_str()).collect::<Vec<_>>(), ["alpha", "Staging"]);
+        assert_eq!(
+            list.iter().map(|c| c.name.as_str()).collect::<Vec<_>>(),
+            ["alpha", "Staging"]
+        );
         assert_eq!(list[1].config.ssl_mode, SslMode::Require);
 
         let mut c = sample("1", "Staging 2");
         c.config.port = Some(6543);
         s.save_connection(&c).await.unwrap();
-        assert_eq!(s.get_connection("1").await.unwrap().unwrap().config.port, Some(6543));
+        assert_eq!(
+            s.get_connection("1").await.unwrap().unwrap().config.port,
+            Some(6543)
+        );
 
         s.delete_connection("1").await.unwrap();
         assert!(s.get_connection("1").await.unwrap().is_none());
